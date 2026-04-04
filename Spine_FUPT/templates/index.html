@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>SPINE_FUPT | 脊柱AI随访工作台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v='20260212f') }}">
+  <script src="{{ url_for('static', filename='js/app.js', v='20260212f') }}" defer></script>
+</head>
+<body>
+  <div id="doctor-shell" class="doctor-shell" style="display:none;"> <!-- Initially hidden until auth check -->
+    <aside id="side-nav" class="side-nav">
+      <div class="brand">
+        <div class="brand-icon"><i class="ri-stethoscope-line"></i></div>
+        <div class="brand-text">
+          <h1>SPINE_FUPT</h1>
+          <p>脊柱AI影像随访工作台</p>
+        </div>
+      </div>
+      <nav id="main-nav" class="main-nav">
+        <button class="nav-item active" data-view="overview"><i class="ri-layout-grid-line"></i><span>总览</span></button>
+        <button class="nav-item" data-view="followup"><i class="ri-user-heart-line"></i><span>随访对象</span></button>
+        <button class="nav-item" data-view="review"><i class="ri-microscope-line"></i><span>复核中心</span></button>
+        <button class="nav-item" data-view="chat"><i class="ri-message-3-line"></i><span>聊天中心</span></button>
+        <button class="nav-item" data-view="questionnaire"><i class="ri-file-list-3-line"></i><span>问卷中心</span></button>
+        <button class="nav-item" data-view="status"><i class="ri-server-line"></i><span>系统状态</span></button>
+        <button class="nav-item nav-admin" data-view="users"><i class="ri-admin-line"></i><span>用户管理</span></button>
+      </nav>
+      <div class="side-foot">
+        <strong>医生工作台</strong>
+        <small>单入口 · 低干扰 · 实时协作</small>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="mobile-nav-btn" class="icon-btn mobile-only" type="button" title="展开菜单">
+            <i class="ri-menu-line"></i>
+          </button>
+          <div>
+            <h2 id="view-title">工作台</h2>
+            <p id="view-subtitle">脊柱侧弯随访管理系统</p>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <button id="quick-add-patient" class="btn btn-primary" type="button">
+            <i class="ri-user-add-line"></i>新增随访对象
+          </button>
+          <div class="user-pill">
+            <i class="ri-user-smile-line"></i>
+            <strong id="user-name">医生</strong>
+          </div>
+          <button id="logout-btn" class="btn btn-light" type="button">
+            <i class="ri-logout-box-r-line"></i>退出
+          </button>
+        </div>
+      </header>
+      
+      <section id="view-root" class="view-root">
+        
+        <!-- View: Overview -->
+        <div id="view-overview" class="view active">
+          <div class="stats-overview">
+            <div class="stat-card">
+              <div class="stat-icon"><i class="ri-user-heart-line"></i></div>
+              <div class="stat-info">
+                <h3>随访患者</h3>
+                <div class="stat-value">--</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon"><i class="ri-image-edit-line"></i></div>
+              <div class="stat-info">
+                <h3>待复核</h3>
+                <div class="stat-value">--</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon"><i class="ri-message-3-line"></i></div>
+              <div class="stat-info">
+                <h3>新消息</h3>
+                <div class="stat-value">--</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon"><i class="ri-task-line"></i></div>
+              <div class="stat-info">
+                <h3>今日任务</h3>
+                <div class="stat-value">--</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="dashboard-grid">
+            <div class="card">
+              <div class="card-header">
+                <h3><i class="ri-list-check"></i> 近期任务</h3>
+              </div>
+              <div class="card-body" id="task-list">
+                <!-- Tasks injected here -->
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header">
+                <h3><i class="ri-calendar-event-line"></i> 日程安排</h3>
+              </div>
+              <div class="card-body" id="schedule-list">
+                <!-- Schedule injected here -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- View: Follow-up -->
+        <div id="view-followup" class="view">
+          <div class="split-view">
+            <div class="list-pane">
+              <div class="search-bar">
+                <i class="ri-search-line"></i>
+                <input type="text" id="patient-search-input" placeholder="搜索患者...">
+              </div>
+              <div id="patient-list" class="item-list"></div>
+              <button class="btn btn-secondary btn-block mt-4" id="btn-add-patient">
+                <i class="ri-add-line"></i> 添加患者
+              </button>
+            </div>
+            <div class="detail-pane">
+              <div class="detail-empty">
+                <i class="ri-user-search-line"></i>
+                <p>请选择一位患者查看详情</p>
+              </div>
+              <div id="patient-detail" class="detail-content hidden" style="display:none; flex-direction:column;">
+                <div class="patient-header">
+                  <h2 id="detail-name">姓名</h2>
+                  <span class="tag" id="detail-age">--岁</span>
+                </div>
+                <div class="patient-info-grid">
+                  <div class="info-item">
+                    <label>下次随访</label>
+                    <span id="detail-next-followup">--</span>
+                  </div>
+                </div>
+                <div class="timeline-container">
+                  <h3>随访记录</h3>
+                  <div id="detail-timeline" class="timeline"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- View: Review -->
+        <div id="view-review" class="view">
+          <div class="split-view">
+            <div class="list-pane">
+              <div class="pane-header"><h3>待复核列表</h3></div>
+              <div id="review-list" class="item-list"></div>
+            </div>
+            <div class="detail-pane">
+              <div class="viewer-empty">
+                <i class="ri-image-line"></i>
+                <p>请选择待复核影像</p>
+              </div>
+              <div id="review-viewer" class="viewer-content hidden" style="display:none; flex-direction:column; height: 100%;">
+                <div class="toolbar">
+                  <button class="icon-btn" id="btn-zoom-in"><i class="ri-zoom-in-line"></i></button>
+                  <button class="icon-btn" id="btn-zoom-out"><i class="ri-zoom-out-line"></i></button>
+                  <button class="icon-btn" id="btn-reset-view"><i class="ri-fullscreen-line"></i></button>
+                  <div class="spacer"></div>
+                  <button class="btn btn-primary" id="btn-share"><i class="ri-share-forward-line"></i> 分享</button>
+                </div>
+                <div class="canvas-container" id="viewer-canvas" style="flex:1; background:#000; overflow:hidden; position:relative;">
+                  <img id="xray-image" src="" style="position:absolute; left:0; top:0; transition: transform 0.1s;">
+                </div>
+                <div class="info-panel">
+                 <div class="info-row"><span>Cobb角:</span> <strong id="info-cobb">--</strong></div>
+                 <div class="info-row"><span>曲率:</span> <strong id="info-curve">--</strong></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- View: Chat -->
+        <div id="view-chat" class="view">
+          <div class="split-view">
+            <div class="list-pane">
+              <div class="pane-header"><h3>消息列表</h3></div>
+              <div id="chat-list" class="item-list"></div>
+            </div>
+            <div class="detail-pane">
+              <div class="chat-empty">
+                <i class="ri-chat-smile-2-line"></i>
+                <p>选择对话开始聊天</p>
+              </div>
+              <div id="chat-window" class="chat-window hidden" style="display:none; flex-direction:column; height:100%;">
+                <div class="chat-header">
+                  <h3 id="chat-user-name">--</h3>
+                </div>
+                <div id="chat-messages" class="chat-messages" style="flex:1; overflow-y:auto; padding:16px;"></div>
+                <div class="chat-input-area" style="padding:16px; border-top:1px solid #eee; display:flex; gap:8px;">
+                  <input type="text" id="chat-input-field" class="form-input" placeholder="输入消息...">
+                  <button class="btn btn-primary" id="btn-send-message"><i class="ri-send-plane-fill"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- View: Questionnaire -->
+        <div id="view-questionnaire" class="view">
+          <div class="page-header">
+            <h3>问卷管理</h3>
+            <button class="btn btn-primary" id="btn-create-questionnaire"><i class="ri-add-line"></i> 新建问卷</button>
+          </div>
+          <div id="questionnaire-list" class="grid-container"></div>
+        </div>
+
+        <!-- View: Status -->
+        <div id="view-status" class="view">
+          <div class="page-header"><h3>系统状态监控</h3></div>
+          <div class="status-grid grid-container"></div>
+        </div>
+
+        <!-- View: Users -->
+        <div id="view-users" class="view">
+          <div class="page-header">
+            <h3>用户管理</h3>
+            <button class="btn btn-primary" id="btn-add-user"><i class="ri-user-add-line"></i> 新增用户</button>
+          </div>
+          <div class="users-list-container card">
+            <div class="users-list"></div>
+          </div>
+        </div>
+
+      </section>
+    </main>
+  </div>
+
+  <div id="public-root" class="public-root hidden"></div>
+
+  <!-- Login Page -->
+  <div id="login-page" class="login-page"> <!-- Initially visible -->
+    <form id="login-form" class="login-form">
+      <div class="login-logo"><i class="ri-hospital-line"></i></div>
+      <h2>医生登录</h2>
+      <p>脊柱AI影像随访系统</p>
+      
+      <div class="form-group">
+          <label for="login-username">账号</label>
+          <input id="login-username" type="text" autocomplete="username" value="admin" placeholder="输入用户名" required class="form-input">
+      </div>
+      
+      <div class="form-group">
+          <label for="login-password">密码</label>
+          <input id="login-password" type="password" autocomplete="current-password" value="admin123" placeholder="输入密码" required class="form-input">
+      </div>
+      
+      <button class="btn btn-primary btn-block" type="submit" style="margin-top: 24px;">
+        <i class="ri-login-box-line"></i>登录系统
+      </button>
+    </form>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Modal Container -->
+  <div id="modal-container"></div>
+
+</body>
+</html>
+

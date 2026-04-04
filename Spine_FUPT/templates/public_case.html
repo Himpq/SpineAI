@@ -1,0 +1,152 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>病例分享</title>
+  <style>
+    body{margin:0;font-family:"Noto Sans SC","IBM Plex Sans",sans-serif;background:#0d0d0d;color:#f3f3f3}
+    .wrap{max-width:1280px;margin:12px auto;padding:0 12px;display:grid;gap:12px}
+    .card{border:1px solid #3a3a3a;background:#111;padding:12px}
+    .grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:12px}
+    .viewer{min-height:520px;background:#000;display:grid;place-items:center;border:1px solid #333;overflow:hidden}
+    img{max-width:100%;max-height:78vh}
+    .comments{display:grid;gap:8px;max-height:420px;overflow:auto}
+    .comment{border:1px solid #3a3a3a;padding:8px;background:#1a1a1a}
+    input,textarea{width:100%;border:1px solid #555;background:#0e0e0e;color:#fff;min-height:38px;padding:8px;box-sizing:border-box}
+    textarea{min-height:90px}
+    button{border:1px solid #fff;background:#fff;color:#000;min-height:38px;padding:0 12px;cursor:pointer}
+    .toggle{display:flex;gap:8px;margin:8px 0}
+    .toggle button{flex:1;opacity:.5}
+    .toggle button.active{opacity:1;border-color:#4af}
+    @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card"><h1 id="title" style="margin:0;font-size:22px">病例帖子</h1></div>
+  <div class="grid">
+    <section class="card">
+      <div class="viewer"><img id="xray" alt="xray"></div>
+      <div class="toggle" id="imgToggle" style="display:none">
+        <button id="btnAi" class="active" onclick="showImg('ai')">AI推理图</button>
+        <button id="btnRaw" onclick="showImg('raw')">原始图</button>
+      </div>
+    </section>
+    <section class="card">
+      <h3 style="margin-top:0">推理结果</h3>
+      <div id="metrics"></div>
+      <hr style="border-color:#333">
+      <h3>评论讨论</h3>
+      <div id="comments" class="comments"></div>
+      <input id="author" placeholder="称呼（可选）" style="margin-top:10px">
+      <textarea id="content" placeholder="输入评论"></textarea>
+      <button id="send" type="button">发送评论</button>
+    </section>
+  </div>
+</div>
+<script>
+const token = "{{ token }}";
+let examId = null;
+let channel = null;
+
+function api(path, options = {}) {
+  return fetch(path, options).then(r => r.json());
+}
+
+function formatTime(raw) {
+  if (!raw) return '';
+  try {
+    const d = new Date(raw);
+    if (isNaN(d)) return raw;
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch(e) { return raw; }
+}
+
+function addComment(item){
+  const div = document.createElement("div");
+  div.className = "comment";
+  div.innerHTML = `<strong>${item.author_name || '访客'}</strong><div>${item.content}</div><small>${formatTime(item.created_at)}</small>`;
+  document.getElementById("comments").appendChild(div);
+}
+
+let examData = null;
+let rawImgUrl = null;
+let aiImgUrl = null;
+
+function showImg(mode) {
+  const img = document.getElementById('xray');
+  if (mode === 'ai' && aiImgUrl) { img.src = aiImgUrl; }
+  else if (rawImgUrl) { img.src = rawImgUrl; }
+  document.getElementById('btnAi').className = mode === 'ai' ? 'active' : '';
+  document.getElementById('btnRaw').className = mode === 'raw' ? 'active' : '';
+}
+
+async function loadData() {
+  const res = await api(`/api/public/case/${token}`);
+  if (!res.ok) return;
+  const exam = res.data.exam;
+  examData = exam;
+  examId = exam.id;
+  channel = exam.comment_channel;
+  document.getElementById("title").textContent = `病例帖子 · ${exam.patient_name}`;
+  rawImgUrl = exam.raw_image_url;
+  aiImgUrl = exam.inference_image_url;
+  document.getElementById("xray").src = aiImgUrl || rawImgUrl || exam.image_url;
+  if (aiImgUrl && rawImgUrl && aiImgUrl !== rawImgUrl) {
+    document.getElementById('imgToggle').style.display = 'flex';
+  }
+  // Build metrics
+  let metricsHtml = '';
+  if (exam.spine_class_text) metricsHtml += `<div>分类：${exam.spine_class_text}</div>`;
+  if (exam.cobb_angle != null) metricsHtml += `<div>Cobb角：${Number(exam.cobb_angle).toFixed(1)}°</div>`;
+  if (exam.severity_label) metricsHtml += `<div>严重程度：${exam.severity_label}</div>`;
+  if (exam.curve_value != null) metricsHtml += `<div>脊柱曲率：${Number(exam.curve_value).toFixed(1)}°</div>`;
+  if (exam.improvement_value != null) metricsHtml += `<div>改善程度：${exam.improvement_value}</div>`;
+  if (exam.cervical_metric) {
+    const cm = exam.cervical_metric;
+    if (cm.avg_ratio != null) metricsHtml += `<div>平均比率：${cm.avg_ratio}</div>`;
+    if (cm.left_ratio != null) metricsHtml += `<div>左侧比率：${cm.left_ratio}</div>`;
+    if (cm.right_ratio != null) metricsHtml += `<div>右侧比率：${cm.right_ratio}</div>`;
+    if (cm.assessment) metricsHtml += `<div>评估：${cm.assessment}</div>`;
+  }
+  if (!metricsHtml) metricsHtml = '<div style="color:#888">暂无推理数据</div>';
+  document.getElementById("metrics").innerHTML = metricsHtml;
+  document.getElementById("comments").innerHTML = "";
+  (exam.comments || []).forEach(addComment);
+  connectWS();
+}
+
+let ws = null;
+function connectWS(){
+  if (!channel) return;
+  const protocol = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${protocol}://${location.host}/ws`);
+  ws.onopen = () => {
+    ws.send(JSON.stringify({type:"hello",kind:"guest",name:"病例访客"}));
+    ws.send(JSON.stringify({type:"subscribe",channel}));
+  };
+  ws.onmessage = (evt) => {
+    const data = JSON.parse(evt.data || "{}");
+    if (data.type === "case_comment" && data.comment) addComment(data.comment);
+  };
+  ws.onclose = () => setTimeout(connectWS, 2000);
+}
+
+document.getElementById("send").addEventListener("click", async () => {
+  const content = document.getElementById("content").value.trim();
+  const author = document.getElementById("author").value.trim();
+  if (!content) return;
+  const res = await api(`/api/public/case/${token}/comments`, {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content, author_name:author || undefined})
+  });
+  if (res.ok) document.getElementById("content").value = "";
+});
+
+loadData();
+</script>
+</body>
+</html>
