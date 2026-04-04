@@ -1,0 +1,7 @@
+timm==0.9.12
+scikit-image
+numpy<2
+Pillow
+matplotlib
+requests
+psutil
