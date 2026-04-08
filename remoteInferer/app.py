@@ -17,7 +17,7 @@ except ImportError as e:
 
 try:
     from openai import OpenAI
-    client = OpenAI(api_key="REDACTED_API_KEY", base_url="https://api.stepfun.com/v1")
+    client = OpenAI(api_key=os.environ.get("STEPFUN_API_KEY", ""), base_url="https://api.stepfun.com/v1")
 except ImportError as e:
     print(f"Warning: OpenAI client import failed: {e}")
     client = None

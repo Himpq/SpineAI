@@ -544,7 +544,11 @@ def run_inference(img_path_or_np, debug=False, output_dir=None, enhance=False, c
                 cv2.circle(vis_peaks, (x, y), 4 * scale, color, -1)
                 # cv2.putText(vis_peaks, label, (x+5, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5*scale, color, scale, cv2.LINE_AA)
         
-        cv2.putText(vis_peaks, "1. Peaks (L/R)", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        _sf = max(H0, W0) / 1000.0
+        _fs = max(0.5, _sf)
+        _th = max(1, int(round(_sf * 2)))
+        _lh = int(40 * _sf)
+        cv2.putText(vis_peaks, "1. Peaks (L/R)", (int(20*_sf), _lh), cv2.FONT_HERSHEY_SIMPLEX, _fs, (0, 0, 255), _th)
 
         # Debug 2: Predicted Heatmap
         # Aggregate heatmaps
@@ -558,7 +562,7 @@ def run_inference(img_path_or_np, debug=False, output_dir=None, enhance=False, c
         heatmap_resized = cv2.resize(heatmap_color, (W0, H0))
         # Overlay
         vis_heatmap = cv2.addWeighted(img_visual.copy(), 0.6, heatmap_resized, 0.4, 0)
-        cv2.putText(vis_heatmap, "2. Heatmap", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        cv2.putText(vis_heatmap, "2. Heatmap", (int(20*_sf), _lh), cv2.FONT_HERSHEY_SIMPLEX, _fs, (0, 0, 255), _th)
 
     # Draw Polygons for L4, L5
     l4_idx = [12, 13, 14, 15]
@@ -584,7 +588,7 @@ def run_inference(img_path_or_np, debug=False, output_dir=None, enhance=False, c
             ch += 1
     
     if debug and vis_peaks is not None and vis_heatmap is not None:
-        cv2.putText(img_visual, "3. Final Result", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        cv2.putText(img_visual, "3. Final Result", (int(20*_sf), _lh), cv2.FONT_HERSHEY_SIMPLEX, _fs, (0, 0, 255), _th)
         # Concatenate images horizontally
         sep_width = 10
         sep = np.zeros((H0, sep_width, 3), dtype=np.uint8) + 255 # White separator

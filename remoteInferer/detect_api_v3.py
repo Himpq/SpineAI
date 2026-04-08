@@ -822,10 +822,14 @@ def run_pipeline(img_path_or_np, return_debug_image=True, reverse_order=True):
         # overlay hed heatmap lightly
         hed_overlay = overlay_heatmap(vis, hed_prob, alpha=0.25)
         hed_overlay = draw_hed_line(hed_overlay, hed_prob, thresh=0.5)
-        # score text
-        cv2.putText(hed_overlay, f'Score {score:+d}', (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 255, 255), 2, cv2.LINE_AA)
-        cv2.putText(hed_overlay, f'Cobb L2-S1: {cobb:.1f} deg', (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv2.LINE_AA)
-        cv2.putText(hed_overlay, f'Curvature: {curvature_deg:.1f} deg', (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 255), 2, cv2.LINE_AA)
+        # score text — dynamic font scale based on image size
+        _sf = max(hed_overlay.shape[:2]) / 1000.0
+        _fs = max(0.5, _sf)
+        _th = max(1, int(round(_sf * 2)))
+        _lh = int(40 * _sf)
+        cv2.putText(hed_overlay, f'Score {score:+d}', (int(20*_sf), _lh), cv2.FONT_HERSHEY_SIMPLEX, 1.1*_fs, (0, 255, 255), _th, cv2.LINE_AA)
+        cv2.putText(hed_overlay, f'Cobb L2-S1: {cobb:.1f} deg', (int(20*_sf), _lh*2), cv2.FONT_HERSHEY_SIMPLEX, 1.0*_fs, (0, 255, 0), _th, cv2.LINE_AA)
+        cv2.putText(hed_overlay, f'Curvature: {curvature_deg:.1f} deg', (int(20*_sf), _lh*3), cv2.FONT_HERSHEY_SIMPLEX, 1.0*_fs, (0, 200, 255), _th, cv2.LINE_AA)
 
 
         # Cobb 杈呭姪绾夸笌瑙掑害绀烘剰锛堣鍓埌鍥惧唴锛?
@@ -867,16 +871,16 @@ def run_pipeline(img_path_or_np, return_debug_image=True, reverse_order=True):
                 # 最小夹角方向
                 diff = (ang_v - ang_u + np.pi) % (2*np.pi) - np.pi
                 steps = np.linspace(0, diff, num=60)
-                radius = 45
+                radius = int(45 * _sf)
                 arc_pts = []
                 for d in steps:
                     ang = ang_u + d
                     arc_pts.append(anchor + radius * np.array([np.cos(ang), np.sin(ang)], dtype=np.float32))
                 arc_pts = np.array([clamp_point(pt, W, H) for pt in arc_pts], dtype=np.int32)
                 if len(arc_pts) > 1:
-                    cv2.polylines(hed_overlay, [arc_pts], False, (0,200,255), 2, cv2.LINE_AA)
-                text_pos = tuple((anchor + np.array([-20, -10])).astype(int))
-                cv2.putText(hed_overlay, f"{cobb:.1f}deg", text_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0,255,0), 2, cv2.LINE_AA)
+                    cv2.polylines(hed_overlay, [arc_pts], False, (0,200,255), _th, cv2.LINE_AA)
+                text_pos = tuple((anchor + np.array([int(-20*_sf), int(-10*_sf)])).astype(int))
+                cv2.putText(hed_overlay, f"{cobb:.1f}deg", text_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.9*_fs, (0,255,0), _th, cv2.LINE_AA)
         result['debug_image'] = hed_overlay
         result['score'] = score
     return result

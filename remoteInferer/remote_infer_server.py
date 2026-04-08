@@ -619,11 +619,16 @@ def _infer_with_custom_model(model_name: str, model_path: str, img: np.ndarray, 
 
     if ext == ".pth":
         pred_mask, overlay = _infer_segmentation(model_path, img)
+        # Report per-class pixel stats for debugging model confusion
+        unique_classes = sorted(int(c) for c in np.unique(pred_mask))
+        class_pixels = {int(c): int(np.sum(pred_mask == c)) for c in unique_classes}
         payload.update(
             {
                 "image_base64": _encode_image_b64(overlay),
                 "image_mimetype": "image/png",
                 "mask_shape": [int(pred_mask.shape[0]), int(pred_mask.shape[1])],
+                "detected_classes": unique_classes,
+                "class_pixels": class_pixels,
             }
         )
         if model_name == "pelvis":
