@@ -16,3 +16,16 @@ build/
 .venv/
 venv/
 node_modules/
+
+# Flutter
+.dart_tool/
+.idea/
+*.iml
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+**/.gradle/
+**/build/
+**/android/app/build/
+*.apk
+*.aab
