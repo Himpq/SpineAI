@@ -35,3 +35,9 @@ node_modules/
 *_out.txt
 *_out2.txt
 *_prompt.md
+
+# Binary / tools
+*.exe
+*.zip
+*.tar.gz
+frpc*
