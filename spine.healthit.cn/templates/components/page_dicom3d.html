@@ -1,0 +1,91 @@
+<!-- View: DICOM 3D -->
+<div id="page-dicom3d" class="page-view">
+  <div class="dashboard-grid dicom3d-grid">
+    <div class="card dicom3d-panel">
+      <div class="card-header">
+        <span>3D 脊柱可视化 Demo</span>
+      </div>
+      <p class="dicom3d-desc">
+        基于 AMI.js 的体数据浏览，可加载本地 .nii / .nii.gz（含分割体）或直接使用远程示例体。暂不接入 TotalSegmentator，仅做可视化演示。
+      </p>
+
+      <input type="file" id="dicom3d-file" accept=".nii,.nii.gz,.nrrd" style="display:none;">
+      <div class="dicom3d-buttons">
+        <button id="dicom3d-open-btn" class="dicom3d-btn primary">选择/上传体数据</button>
+        <button id="dicom3d-example-btn" class="dicom3d-btn ghost">加载示例体</button>
+      </div>
+      <div id="dicom3d-drop" class="dicom3d-drop">拖入 NIfTI / NRRD 文件到此处</div>
+      <div id="dicom3d-status" class="dicom3d-status">等待加载数据…</div>
+
+      <div class="dicom3d-control">
+        <label for="dicom3d-opacity">体渲染透明度</label>
+        <input type="range" id="dicom3d-opacity" min="10" max="100" value="65">
+      </div>
+      <div class="dicom3d-control">
+        <label for="dicom3d-lut">颜色查找表</label>
+        <select id="dicom3d-lut">
+          <option value="random">Random</option>
+          <option value="hot">Hot</option>
+          <option value="spectrum">Spectrum</option>
+          <option value="blackbody">Blackbody</option>
+          <option value="gold">Gold</option>
+          <option value="red">Red</option>
+          <option value="green">Green</option>
+          <option value="blue">Blue</option>
+        </select>
+      </div>
+      <label class="dicom3d-toggle">
+        <input type="checkbox" id="dicom3d-show-curve" checked>
+        显示模拟脊柱曲线/椎体标记
+      </label>
+      <div id="dicom3d-lut-canvases" style="display:none;"></div>
+
+      <div class="dicom3d-meta">
+        <div><span>文件</span><span id="dicom3d-file-meta">--</span></div>
+        <div><span>体素尺寸</span><span id="dicom3d-dims">--</span></div>
+      </div>
+      <div class="dicom3d-hint">
+        示例体通过 Remote_Inferer 提供；若远程不可用，使用本地示例即可。右侧可用滚轮切换切片，双击回到中间层。
+      </div>
+    </div>
+
+    <div class="card dicom3d-canvas-card">
+      <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
+        <span>多视口预览</span>
+        <div class="dicom3d-badges">
+          <span class="badge" id="dicom3d-fps">FPS --</span>
+          <span class="badge subtle">示例体: GL108</span>
+        </div>
+      </div>
+
+      <div class="dicom3d-viewports">
+        <div class="dicom3d-viewport" id="dicom3d-viewport-3d">
+          <div class="dicom3d-tag">3D 体渲染</div>
+          <div class="dicom3d-overlay">等待数据…</div>
+        </div>
+        <div class="dicom3d-viewport" id="dicom3d-viewport-axial">
+          <div class="dicom3d-tag">Axial</div>
+          <div class="dicom3d-overlay">等待数据…</div>
+        </div>
+        <div class="dicom3d-viewport" id="dicom3d-viewport-sagittal">
+          <div class="dicom3d-tag">Sagittal</div>
+          <div class="dicom3d-overlay">等待数据…</div>
+        </div>
+        <div class="dicom3d-viewport" id="dicom3d-viewport-coronal">
+          <div class="dicom3d-tag">Coronal</div>
+          <div class="dicom3d-overlay">等待数据…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card dicom3d-metrics-card">
+      <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
+        <span>参数识别 (示例)</span>
+        <button id="dicom3d-metrics-refresh" class="dicom3d-btn ghost" style="padding:6px 12px; width:auto;">生成示例参数</button>
+      </div>
+      <div id="dicom3d-metrics-body" class="dicom3d-metrics-body">
+        <div class="dicom3d-metrics-placeholder">加载体数据后自动生成示例 Cobb 角、Lordosis、Kyphosis、弯曲评分等参数。</div>
+      </div>
+    </div>
+  </div>
+</div>

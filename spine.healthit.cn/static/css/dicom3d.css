@@ -1,0 +1,32 @@
+.dicom3d-grid{display:grid;grid-template-columns:320px 1fr;gap:18px;align-items:start}
+.dicom3d-panel p{margin:0}
+.dicom3d-desc{font-size:13px;color:#64748b;line-height:1.6;margin-bottom:12px}
+.dicom3d-buttons{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.dicom3d-btn{flex:1;padding:10px 12px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;color:#0f172a;cursor:pointer;font-weight:600}
+.dicom3d-btn.primary{background:#2563eb;color:#fff;border-color:#1d4ed8;box-shadow:0 6px 16px rgba(37,99,235,.15)}
+.dicom3d-btn.ghost{background:#fff}
+.dicom3d-drop{border:1px dashed #cbd5e1;border-radius:10px;padding:12px;text-align:center;color:#94a3b8;font-size:13px;background:#f8fafc;margin-bottom:10px}
+.dicom3d-status{padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#475569;font-weight:600;margin-bottom:12px;box-shadow:0 2px 6px rgba(15,23,42,.06)}
+.dicom3d-control{display:flex;align-items:center;justify-content:space-between;margin:8px 0;font-size:13px;color:#475569;gap:12px}
+.dicom3d-control input[type=range]{flex:1}
+.dicom3d-control select{flex:1;padding:8px;border:1px solid #e2e8f0;border-radius:8px;background:#fff}
+.dicom3d-toggle{display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;margin:10px 0}
+.dicom3d-meta{border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;font-size:12px;color:#475569;background:#f8fafc;margin-top:8px}
+.dicom3d-meta div{display:flex;justify-content:space-between;margin:4px 0}
+.dicom3d-hint{font-size:12px;color:#94a3b8;margin-top:10px;line-height:1.5}
+.dicom3d-canvas-card{min-height:560px}
+.dicom3d-viewports{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:10px;height:620px}
+.dicom3d-viewport{position:relative;background:#0f172a;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden}
+.dicom3d-viewport canvas{width:100%!important;height:100%!important;display:block}
+.dicom3d-tag{position:absolute;top:8px;left:8px;padding:4px 10px;background:rgba(15,23,42,.85);color:#e2e8f0;border-radius:8px;font-size:12px;border:1px solid rgba(148,163,184,.4);z-index:2}
+.dicom3d-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:13px;pointer-events:none}
+.dicom3d-badges .badge{margin-left:6px}
+.badge.subtle{background:#e2e8f0;color:#475569}
+.dicom3d-metrics-card{margin-top:12px}
+.dicom3d-metrics-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.dicom3d-metric{border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;background:#f8fafc}
+.dicom3d-metric h4{margin:0;font-size:13px;color:#475569}
+.dicom3d-metric .value{font-size:20px;font-weight:700;color:#0f172a}
+.dicom3d-metric .note{font-size:12px;color:#94a3b8;margin-top:2px}
+.dicom3d-metrics-placeholder{color:#94a3b8;font-size:13px}
+@media (max-width:1200px){.dicom3d-grid{grid-template-columns:1fr}.dicom3d-viewports{height:520px}}

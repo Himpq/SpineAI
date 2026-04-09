@@ -1,0 +1,73 @@
+<!-- View: Status -->
+<div id="page-status" class="page-view">
+    <div class="about-content">
+        <style>
+            .status-bar { height: 8px; background: #e2e8f0; border-radius: 6px; overflow: hidden; }
+            .status-bar-fill { height: 100%; width: 0%; background: #22c55e; transition: width 0.25s ease; }
+            .status-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+            .status-chart { width: 100%; height: 80px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+        </style>
+        <div class="about-section">
+            <h3>远程推理服务状态</h3>
+            <div class="metric-row">
+                <div class="metric-item">
+                    <strong id="status-text">检查中...</strong><span id="status-sub">等待响应</span>
+                </div>
+                <div class="metric-item">
+                    <strong id="status-latency">- ms</strong>
+                </div>
+                <div class="metric-item">
+                    <strong id="status-updated">-</strong>
+                    <span>最后更新</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="about-section">
+            <h3>资源使用情况</h3>
+            <div class="metric-row">
+                <div class="metric-item">
+                    <strong id="status-cpu">-</strong>
+                    <span>CPU 使用率</span>
+                    <div class="status-bar"><div id="bar-cpu" class="status-bar-fill"></div></div>
+                </div>
+                <div class="metric-item">
+                    <strong id="status-ram">-</strong>
+                    <span>内存使用率</span>
+                    <div class="status-bar"><div id="bar-ram" class="status-bar-fill"></div></div>
+                </div>
+                <div class="metric-item">
+                    <strong id="status-rss">-</strong>
+                    <span>进程内存使用</span>
+                </div>
+            </div>
+            <div class="metric-row">
+                <div class="metric-item">
+                    <strong id="status-gpu">-</strong>
+                    <span>GPU 使用率 (allocated)</span>
+                    <div class="status-bar"><div id="bar-gpu" class="status-bar-fill"></div></div>
+                </div>
+                <div class="metric-item">
+                    <strong id="status-gpu-reserved">-</strong>
+                    <span>GPU 使用率 (reserved)</span>
+                </div>
+                <div class="metric-item">
+                    <strong id="status-gpu-count">-</strong>
+                    <span>GPU 数量</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="about-section">
+            <h3>性能图表</h3>
+            <div class="status-grid">
+                <p>CPU</p>
+                <p>MEM</p>
+            </div>
+            <div class="status-grid">
+                <canvas id="status-chart-cpu" class="status-chart"></canvas>
+                <canvas id="status-chart-ram" class="status-chart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <!-- By Himpq -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}HealthIT Spine{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v=2.0.2">
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="brand">
+            <img src="https://www.healthit.cn/wp-content/uploads/2026/01/logo-healthit.png" class="brand-logo"/>
+            <span class="brand-text">HealthIT AI<br>脊柱辅助诊断系统<span style='font-size: 10px'>V1.0</span></span>
+        </div>
+        
+        <button class="sidebar-toggle" onclick="toggleSidebar()">
+            <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+            </svg>
+        </button>
+        
+        <nav class="nav-menu">
+            <div class="nav-item active" onclick="switchPage('inference', this)">
+                <div class="nav-icon">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+                <span class="nav-text">脊柱诊断</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('thyroid', this)">
+                <div class="nav-icon">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6a4 4 0 110 12 4 4 0 010-12z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.93 4.93a10 10 0 000 14.14M19.07 4.93a10 10 0 010 14.14" />
+                    </svg>
+                </div>
+                <span class="nav-text">甲状腺结节Demo</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('dicom3d', this)">
+                <div class="nav-icon">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h10v10H7z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7l5-4 5 4M7 17l5 4 5-4" />
+                    </svg>
+                </div>
+                <span class="nav-text">3D可视化Demo</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('about', this)">
+                <div class="nav-icon">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5h6m2 0h.01M4 7a2 2 0 012-2h10a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7z" />
+                    </svg>
+                </div>
+                <span class="nav-text">项目简介</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('board', this)">
+                <div class="nav-icon">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M12 3a9 9 0 110 18 9 9 0 010-18z" />
+                    </svg>
+                </div>
+                <span class="nav-text">项目更新</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('team', this)">
+                <div class="nav-icon">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20H7a4 4 0 010-8h10a4 4 0 010 8zm-3-9a3 3 0 100-6 3 3 0 000 6zM7 20a4 4 0 014-4h2" />
+                    </svg>
+                </div>
+                <span class="nav-text">团队介绍</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('status', this)">
+                <div class="nav-icon">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 19v-6m6 6V7m6 12v-3m4 3V5" />
+                    </svg>
+                </div>
+                <span class="nav-text">服务状态</span>
+            </div>
+        </nav>
+
+        <div class="footer-info">
+            [Spine Detect & Diagnose System]<br>
+            HealthIT Spine Team
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        
+        <!-- Header -->
+        <header class="top-bar">
+            <div class="page-title">
+                <h2 id="header-title">{% block header_title %}在线推理{% endblock %}</h2>
+            </div>
+            <div class="user-profile">
+                <span class="status-badge">● System Ready</span>
+            </div>
+        </header>
+
+        {% block content %}{% endblock %}
+
+    </main>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}?v=2.0.3"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

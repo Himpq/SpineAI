@@ -1,0 +1,90 @@
+﻿<!-- View: Inference (Default) -->
+<div id="page-inference" class="page-view active-view">
+    <div class="dashboard-grid">
+        
+        <!-- Left Control Panel -->
+        <div class="control-panel">
+            
+            <!-- Text Info Card -->
+            <div class="card">
+                <div class="card-header">
+                    <span>模型选择</span>
+                </div>
+                <div class="model-tabs">
+                    <div class="model-tab active-tab" onclick="switchModel('l4l5', this)">脊柱诊断</div>
+                    <div class="model-tab" onclick="switchModel('cervical', this)">颈部诊断</div>
+                    <div class="model-tab" onclick="switchModel('clavicle', this)">锁骨</div>
+                    <div class="model-tab" onclick="switchModel('t1', this)">T1</div>
+                    <div class="model-tab" onclick="switchModel('pelvis', this)">骨盆</div>
+                    <div class="model-tab" onclick="switchModel('opll', this)">OPLL Seg</div>
+                </div>
+                <p id="model-desc" style="font-size: 13px; color: #64748b; line-height: 1.5; margin-bottom:15px;">
+                    L4/L5 Locator 模型 + 髂骨识别模型对 X 光数据进行骨化诊断。
+                </p>
+            </div>
+
+            <!-- Upload Card -->
+            <div class="card" style="flex:1; display:flex; flex-direction:column;">
+                <div class="card-header">
+                    <span>影像上传</span>
+                </div>
+                <div id="drop-zone" class="upload-zone" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+                    <div class="upload-icon">☁️</div>
+                    <div class="upload-text">点击或拖拽 X-Ray 图像</div>
+                    <div style="font-size:12px; color:#94a3b8; margin-top:8px;">支持 PNG / JPG</div>
+                </div>
+                <input type="file" id="file-input" accept="image/*" style="display: none;">
+                
+                <div style="margin-top:10px;">
+                    <button onclick="openExampleModal()" style="width:100%; padding:10px; border:1px dashed #cbd5e1; background:#f8fafc; color:#64748b; border-radius:8px; cursor:pointer; font-size:13px; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:8px;">
+                        <img src="/static/img/compressed/1.png" style="width:24px; height:24px; object-fit:cover; border-radius:4px;">
+                        <span>选用测试例图 (Select Example 1-6)</span>
+                    </button>
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- Center Result Panel -->
+        <div class="result-viewer card" style="padding:0; border:none; background:transparent; box-shadow:none;">
+            <div class="result-canvas" style="overflow:hidden; position:relative;">
+                <div id="empty-placeholder" class="empty-state">
+                    <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="opacity:0.3; margin-bottom:10px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <p>等待分析结果...</p>
+                </div>
+                <img id="result-img" src="" style="display:none; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) scale(1); transform-origin:center center; cursor:grab;">
+                
+                <!-- Loading Overlay -->
+                <div id="loading" class="loading-overlay">
+                    <div class="spinner"></div>
+                    <div id="loading-text" style="color:#0f1720; font-weight:600;">AI 分析中...</div>
+                    <div style="font-size:12px; color:#64748b; margin-top:5px;"></div>
+                </div>
+                
+                <!-- Error Message Overlay -->
+                <div id="error-overlay" class="loading-overlay" style="background: rgba(255,255,255,0.95); display: none;">
+                    <div style="color:#ef4444; font-size:48px; margin-bottom:10px;">⚠️</div>
+                    <div id="error-title" style="color:#ef4444; font-weight:700; font-size:18px;">分析失败</div>
+                    <div id="error-msg" style="font-size:14px; color:#64748b; margin-top:5px; max-width:80%; text-align:center;">Unknown Error</div>
+                    <button onclick="closeError()" style="margin-top:20px; padding:8px 24px; border:1px solid #e2e8f0; background:#fff; border-radius:6px; cursor:pointer;">关闭</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Chat Panel -->
+        <div id="chat-panel" class="chat-panel">
+            <!-- AI 辅助诊断 Chat -->
+            <div class="chat-box" style="height:100%;">
+                <div id="chat-mask" class="chat-disabled">请上传图片后使用健康咨询</div>
+                <div class="chat-log" id="chat-log"></div>
+                <div class="chat-input">
+                    <textarea id="chat-text" placeholder="请输入问题，例如：L4/L5 是否椎间隙狭窄？"></textarea>
+                    <button id="chat-send">发送</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>

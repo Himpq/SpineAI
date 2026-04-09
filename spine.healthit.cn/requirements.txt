@@ -1,0 +1,10 @@
+timm==0.9.12
+opencv-python
+scikit-image
+numpy
+Pillow
+flask
+requests
+flask-sock==0.7.0
+websocket-client==1.9.0
+matplotlib

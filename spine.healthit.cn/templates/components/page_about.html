@@ -1,0 +1,110 @@
+<!-- View: About -->
+<div id="page-about" class="page-view">
+    <div class="about-content">
+        
+        <div class="about-section">
+            <h3>HealthIT AI 脊柱辅助诊断系统 V1.0</h3>
+            <p>本项目旨在构建高精度的脊柱影像分析辅助系统。目前包含三个核心模块：基于 UNetKeypoint 的腰椎关键点定位（L4/L5 Locator）与基于 2D UNet 的颈椎 OPLL 病灶分割，和基于 2D UNet的髂骨上沿识别分割。</p>
+            <p>系统后端基于 PyTorch 实现，前端采用轻量级 Flask + 当现代 Dashboard 设计。所有推理均在服务器端执行。</p>
+        </div>
+
+        <div class="about-section">
+            <h3>1. L4/L5 Locator (X-Ray)</h3>
+            <p>约 4000 例 Sagittal X-Ray 图片训练，使用 HRNet ，输出线性标记直接分类预测椎点。</p>
+            <div class="metric-row">
+                <div class="metric-item">
+                    <strong>4.61 px</strong>
+                    <span>测试集误差</span>
+                </div>
+                <div class="metric-item">
+                    <strong>3092</strong>
+                    <span>参数量(万)</span>
+                </div>
+                <div class="metric-item">
+                    <strong>89.6%</strong>
+                    <span>测试集识别率</span>
+                </div>
+            </div>
+          <div class="tech-details">
+            <h4>技术要点与训练细节</h4>
+            <ul>
+              <li>骨架：采用 <strong>HRNet</strong> (High-Resolution Network) 作为主干，保持多尺度并行高分辨率流并在阶段间反复交换信息，提升对位置敏感任务（关键点定位、线段化）的空间精度。参考：<a href="https://arxiv.org/abs/1908.07919" target="_blank">Wang et al., arXiv:1908.07919</a>。</li>
+            </ul>
+            <h5>引用</h5>
+            <ul style="list-style-type:disc">
+              <li><a href="https://arxiv.org/abs/1908.07919" target="_blank">Deep High-Resolution Representation Learning for Visual Recognition — Jingdong Wang et al., 2019</a></li>
+              <li><a href="https://github.com/HRNet" target="_blank">HRNet 官方代码库</a></li>
+            </ul>
+            <div class="model-diagram" id="hrnet-diagram" aria-label="HRNet 结构图"></div>
+          </div>
+        </div>
+        
+        <div class="about-section">
+            <h3>2. 髂骨上沿识别分割</h3>
+            <p>基于 <strong>VGG16-BN</strong> 模型，单通道输入，5 个多尺度侧输出 + 1×1 融合层，专注细线，识别准确率远远大于 UNet / ROI+UNet。</p>
+            <div class="metric-row">
+                <div class="metric-item">
+                    <strong>76.8%</strong>
+                    <span>UNet相比准确率提升</span>
+                </div>
+                <div class="metric-item">
+                    <strong>1472</strong>
+                    <span>参数量(万)</span>
+                </div>
+                <div class="metric-item">
+                    <strong>99.7%</strong>
+                    <span>标注数据集内准确率*</span>
+                </div>
+            </div>
+          <div class="tech-details">
+            <h5>引用</h5>
+            <ul style="list-style-type:disc">
+              <li><a href="https://arxiv.org/abs/1409.1556" target="_blank">Very Deep Convolutional Networks for Large-Scale Image Recognition — Simonyan & Zisserman, 2014 (VGG)</a></li>
+              <li><a href="https://arxiv.org/abs/1502.03167" target="_blank">Batch Normalization — Ioffe & Szegedy, 2015</a></li>
+              <li><a href="https://arxiv.org/abs/1504.06375" target="_blank">Holistically-Nested Edge Detection (HED) — Saining Xie & Zhuowen Tu, 2015</a></li>
+            </ul>
+            <div class="model-diagram" id="hed-diagram" aria-label="VGG16-BNN 结构图"></div>
+            <p>*全量数据集，以重合面积大于等于90%为标准</p>
+          </div>
+        </div>
+        
+        <div class="about-section">
+            <h3>3. OPLL Segmentation (CT)</h3>
+            <p>基于 223 例颈部矢状面 CT 数据训练 UNet 模型进行精细颈部后沿韧带骨化预测。</p>
+            <div class="metric-row">
+                <div class="metric-item">
+                    <strong>70.3%</strong>
+                    <span>Average Dice</span>
+                </div>
+            </div>
+          <div class="tech-details">
+            <h4>技术要点与训练细节</h4>
+            <ul>
+              <li>架构：基于经典 <strong>U-Net</strong>（2D）进行端到端分割，采用下采样-上采样对称结构以保证精细边界恢复；损失采用 Dice + BCE 混合以兼顾区域与边界质量。</li>
+            </ul>
+            <h5>引用</h5>
+            <ul style="list-style-type:disc">
+              <li><a href="https://arxiv.org/abs/1505.04597" target="_blank">U-Net: Convolutional Networks for Biomedical Image Segmentation — Ronneberger et al., 2015</a></li>
+              <li><a href="https://pubmed.ncbi.nlm.nih.gov/35587949/" target="_blank">Le et al., J Am Acad Orthop Surg. 2022 — "Ossification of the Posterior Longitudinal Ligament: Pathophysiology, Diagnosis, and Management" (综述)</a></li>
+            </ul>
+            <div class="model-diagram" id="unet-diagram" aria-label="U-Net 结构图"></div>
+          </div>
+        </div>
+        
+        <div class="about-section">
+            <h3>4. 语言大模型接入辅助诊断</h3>
+            <p>可接入<b>豆包Seed</b>、<b>DeepSeek</b>等大模型传入量化数据进行辅助诊断。</p>
+            <div class="metric-row">
+                <div class="metric-item">
+                    <strong>患者+医生端整合</strong>
+                    <span>整合方案</span>
+                </div>
+                <div class="metric-item">
+                    <strong>-</strong>
+                    <span>-</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>

@@ -1,0 +1,1612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <!-- By Himpq -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HealthIT Spine</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v=2.0.2">
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="brand">
+            <img src="https://www.healthit.cn/wp-content/uploads/2026/01/logo-healthit.png" class="brand-logo"/>
+            <span class="brand-text">HealthIT AI<br>脊柱辅助诊断系统<span style='font-size: 10px'>V1.0</span></span>
+        </div>
+        
+        <button class="sidebar-toggle" onclick="toggleSidebar()">
+            <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+            </svg>
+        </button>
+        
+        <nav class="nav-menu">
+            <div class="nav-item active" onclick="switchPage('inference', this)">
+                <div class="nav-icon">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+                <span class="nav-text">脊柱诊断</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('thyroid', this)">
+                <div class="nav-icon">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6a4 4 0 110 12 4 4 0 010-12z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.93 4.93a10 10 0 000 14.14M19.07 4.93a10 10 0 010 14.14" />
+                    </svg>
+                </div>
+                <span class="nav-text">甲状腺结节Demo</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('about', this)">
+                <div class="nav-icon">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5h6m2 0h.01M4 7a2 2 0 012-2h10a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7z" />
+                    </svg>
+                </div>
+                <span class="nav-text">项目简介</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('board', this)">
+                <div class="nav-icon">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M12 3a9 9 0 110 18 9 9 0 010-18z" />
+                    </svg>
+                </div>
+                <span class="nav-text">项目更新</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('team', this)">
+                <div class="nav-icon">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20H7a4 4 0 010-8h10a4 4 0 010 8zm-3-9a3 3 0 100-6 3 3 0 000 6zM7 20a4 4 0 014-4h2" />
+                    </svg>
+                </div>
+                <span class="nav-text">团队介绍</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('status', this)">
+                <div class="nav-icon">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 19v-6m6 6V7m6 12v-3m4 3V5" />
+                    </svg>
+                </div>
+                <span class="nav-text">服务状态</span>
+            </div>
+        </nav>
+
+        <div class="footer-info">
+            [Spine Detect & Diagnose System]<br>
+            HealthIT Spine Team
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        
+        <!-- Header -->
+        <header class="top-bar">
+            <div class="page-title">
+                <h2 id="header-title">在线推理</h2>
+            </div>
+            <div class="user-profile">
+                <span class="status-badge">● System Ready</span>
+            </div>
+        </header>
+
+        <!-- View: Inference (Default) -->
+        <div id="page-inference" class="page-view active-view">
+            <div class="dashboard-grid">
+                
+                <!-- Left Control Panel -->
+                <div class="control-panel">
+                    
+                    <!-- Text Info Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span>模型选择</span>
+                        </div>
+                        <div class="model-tabs">
+                            <div class="model-tab active-tab" onclick="switchModel('l4l5', this)">脊椎诊断</div>
+                            <div class="model-tab" onclick="switchModel('opll', this)">OPLL Seg</div>
+                        </div>
+                        <p id="model-desc" style="font-size: 13px; color: #64748b; line-height: 1.5; margin-bottom:15px;">
+                            L4/L5 Locator模型 + 髂骨识别模型对 X 光数据进行骨化诊断。
+                        </p>
+                        
+                        <!--<div id="conf-control" style="border-top:1px solid #f1f5f9; padding-top:10px;">-->
+                        <!--     <label style="font-size:12px; color:#475569; font-weight:600; display:flex; justify-content:space-between;">-->
+                        <!--        <span>Confidence Threshold</span>-->
+                        <!--        <span id="conf-display">0.3</span>-->
+                        <!--     </label>-->
+                        <!--     <input type="range" id="conf-input" min="0.1" max="0.9" step="0.05" value="0.3" style="width:100%; margin-top:5px; accent-color:#3b82f6;">-->
+                        <!--</div>-->
+                    </div>
+
+                    <!-- Upload Card -->
+                    <div class="card" style="flex:1; display:flex; flex-direction:column;">
+                        <div class="card-header">
+                            <span>影像上传</span>
+                        </div>
+                        <div id="drop-zone" class="upload-zone" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+                            <div class="upload-icon">☁️</div>
+                            <div class="upload-text">点击或拖拽 X-Ray 图像</div>
+                            <div style="font-size:12px; color:#94a3b8; margin-top:8px;">支持 PNG / JPG</div>
+                        </div>
+                        <input type="file" id="file-input" accept="image/*" style="display: none;">
+                        
+                        <div style="margin-top:10px;">
+                            <button onclick="openExampleModal()" style="width:100%; padding:10px; border:1px dashed #cbd5e1; background:#f8fafc; color:#64748b; border-radius:8px; cursor:pointer; font-size:13px; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:8px;">
+                                <img src="/static/img/compressed/1.png" style="width:24px; height:24px; object-fit:cover; border-radius:4px;">
+                                <span>选用测试例图 (Select Example 1-6)</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                </div>
+
+                <!-- Center Result Panel -->
+                <div class="result-viewer card" style="padding:0; border:none; background:transparent; box-shadow:none;">
+                    <div class="result-canvas" style="overflow:hidden; position:relative;">
+                        <div id="empty-placeholder" class="empty-state">
+                            <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="opacity:0.3; margin-bottom:10px;">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <p>等待分析结果...</p>
+                        </div>
+                        <img id="result-img" src="" style="display:none; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) scale(1); transform-origin:center center; cursor:grab;">
+                        
+                        <!-- Loading Overlay -->
+                        <div id="loading" class="loading-overlay">
+                            <div class="spinner"></div>
+                            <div id="loading-text" style="color:#0f1720; font-weight:600;">AI 分析中...</div>
+                            <div style="font-size:12px; color:#64748b; margin-top:5px;">椎块定位 + 髂嵴识别中</div>
+                        </div>
+                        
+                        <!-- Error Message Overlay -->
+                        <div id="error-overlay" class="loading-overlay" style="background: rgba(255,255,255,0.95); display: none;">
+                            <div style="color:#ef4444; font-size:48px; margin-bottom:10px;">⚠️</div>
+                            <div id="error-title" style="color:#ef4444; font-weight:700; font-size:18px;">分析失败</div>
+                            <div id="error-msg" style="font-size:14px; color:#64748b; margin-top:5px; max-width:80%; text-align:center;">Unknown Error</div>
+                            <button onclick="closeError()" style="margin-top:20px; padding:8px 24px; border:1px solid #e2e8f0; background:#fff; border-radius:6px; cursor:pointer;">关闭</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Chat Panel -->
+                <div id="chat-panel" class="chat-panel">
+                    <!-- AI 辅助诊断 Chat -->
+                    <div class="chat-box" style="height:100%;">
+                        <div id="chat-mask" class="chat-disabled">请上传图片后使用健康咨询</div>
+                        <div class="chat-log" id="chat-log"></div>
+                        <div class="chat-input">
+                            <textarea id="chat-text" placeholder="请输入问题，例如：L4/L5 是否椎间隙狭窄？"></textarea>
+                            <button id="chat-send">发送</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+
+        <!-- View: Thyroid -->
+        <div id="page-thyroid" class="page-view">
+            <div class="dashboard-grid" style="grid-template-columns:320px 1fr; gap:20px;">
+                
+                <div class="card" style="display:flex; flex-direction:column; gap:12px;">
+                    <div class="card-header">
+                        <span>甲状腺结节 Demo（占位）</span>
+                    </div>
+                    <p style="font-size:13px; color:#64748b; line-height:1.6; margin:0;">
+                        先期接入占位接口，后端模型接入 Remote_Inferer 后可直接替换。支持上传单张超声图，选择模型并发起推理。
+                    </p>
+                    <label style="font-size:12px; color:#475569; font-weight:600;">选择模型</label>
+                    <select id="thyroid-model" class="input" style="padding:10px; border:1px solid #e2e8f0; border-radius:8px;">
+                        <option value="swin-unet">swin-unet</option>
+                        <option value="unet">unet</option>
+                        <option value="deeplabv3+">deeplabv3+</option>
+                    </select>
+                    <div style="border:1px dashed #cbd5e1; border-radius:10px; padding:14px; text-align:center;">
+                        <input type="file" id="thyroid-file" accept="image/*" style="display:none;">
+                        <button id="thyroid-upload-btn" style="width:100%; padding:10px; border:1px solid #e2e8f0; background:#f8fafc; border-radius:8px; cursor:pointer;">选择或拖入超声图</button>
+                        <p style="font-size:12px; color:#94a3b8; margin-top:6px;">支持 PNG / JPG，单张上传</p>
+                        <button id="thyroid-example-btn" style="margin-top:8px; width:100%; padding:8px; border:1px dashed #94a3b8; background:#fff; color:#475569; border-radius:8px; cursor:pointer;">使用示例图</button>
+                        <div style="margin-top:12px;">
+                            <img id="thyroid-preview" src="" style="max-width:100%; max-height:180px; display:none; border-radius:8px; border:1px solid #e2e8f0;">
+                        </div>
+                    </div>
+                    <button id="thyroid-run-btn" style="padding:12px; background:#2563eb; color:#fff; border:none; border-radius:10px; cursor:pointer;">开始预测</button>
+                </div>
+
+                <div class="card" style="min-height:420px; display:flex; flex-direction:column; gap:12px;">
+                    <div class="card-header">
+                        <span>预测结果</span>
+                    </div>
+                    <div style="flex:1; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;">
+                        <div id="thyroid-placeholder" style="text-align:center; color:#94a3b8; display:flex; flex-direction:column; align-items:center; gap:10px;">
+                            <div style="font-size:40px;">🩺</div>
+                            <div id="thyroid-status-bar" style="padding:10px 16px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; color:#475569; font-weight:600; box-shadow:0 2px 6px rgba(15,23,42,0.06);">等待预测结果...</div>
+                        </div>
+                        <img id="thyroid-result-img" src="" style="max-width:100%; max-height:520px; display:none; border-radius:10px; object-fit:contain;">
+                    </div>
+                    <div id="thyroid-meta" style="font-size:12px; color:#64748b;"></div>
+                </div>
+
+            </div>
+        </div>
+
+
+        <!-- View: About -->
+        <div id="page-about" class="page-view">
+            <div class="about-content">
+                
+                <div class="about-section">
+                    <h3>HealthIT AI 脊柱辅助诊断系统 V1.0</h3>
+                    <p>本项目旨在构建高精度的脊柱影像分析辅助系统。目前包含三个核心模块：基于 UNetKeypoint 的腰椎关键点定位（L4/L5 Locator）与基于 2D UNet 的颈椎 OPLL 病灶分割，和基于 2D UNet的髂骨上沿识别分割。</p>
+                    <p>系统后端基于 PyTorch 实现，前端采用轻量级 Flask + 当现代 Dashboard 设计。所有推理均在服务器端执行。</p>
+                </div>
+
+                <div class="about-section">
+                    <h3>1. L4/L5 Locator (X-Ray)</h3>
+                    <p>基于 BUU Spine Dataset 公开数据集 3600 例 Sagittal X-Ray 图片训练，使用 HRNet ，输出线性标记直接分类预测椎点。</p>
+                    <div class="metric-row">
+                        <div class="metric-item">
+                            <strong>4.61 px</strong>
+                            <span>测试集误差</span>
+                        </div>
+                        <div class="metric-item">
+                            <strong>3092</strong>
+                            <span>参数量(万)</span>
+                        </div>
+                        <div class="metric-item">
+                            <strong>89.6%</strong>
+                            <span>测试集识别率</span>
+                        </div>
+                    </div>
+                  <div class="tech-details">
+                    <h4>技术要点与训练细节</h4>
+                    <ul>
+                      <li>骨架：采用 <strong>HRNet</strong> (High-Resolution Network) 作为主干，保持多尺度并行高分辨率流并在阶段间反复交换信息，提升对位置敏感任务（关键点定位、线段化）的空间精度。参考：<a href="https://arxiv.org/abs/1908.07919" target="_blank">Wang et al., arXiv:1908.07919</a>。</li>
+                    <!--  <li>目标与输出：将椎体关键点/中线映射为热图 (heatmap) / 回归坐标；损失采用像素级 MSE（热图）或 L1/L2（回归），训练阶段附加顺序先验与后处理线段化。</li>-->
+                    <!--  <li>训练细节：常用配置包括 HRNet-W32/W48，输入尺度 512–1024，优化器 SGD（momentum=0.9），初始 lr 0.01（step decay 或 cosine），weight decay 1e-4，训练 100–200 epochs；使用随机尺度/平移、CLAHE、强对比度增强以提高 X-Ray 鲁棒性。</li>-->
+                    <!--  <li>推理：多尺度融合 + NMS/局部最大值提取关键点，并结合几何先验生成 L4/L5 指示线与 Cobb 角度估计。</li>-->
+                    <!--</ul>-->
+                    <h5>引用</h5>
+                    <ul style="list-style-type:disc">
+                      <li><a href="https://arxiv.org/abs/1908.07919" target="_blank">Deep High-Resolution Representation Learning for Visual Recognition — Jingdong Wang et al., 2019</a></li>
+                      <li><a href="https://github.com/HRNet" target="_blank">HRNet 官方代码库</a></li>
+                    </ul>
+                    <div class="model-diagram" id="hrnet-diagram" aria-label="HRNet 结构图"></div>
+                  </div>
+                </div>
+                
+                
+                
+                <div class="about-section">
+                    <h3>2. 髂骨上沿识别分割</h3>
+                    <p>基于 <strong>VGG16-BN</strong> 模型，单通道输入，5 个多尺度侧输出 + 1×1 融合层，专注细线，识别准确率远远大于 UNet / ROI+UNet。</p>
+                    <div class="metric-row">
+                        <div class="metric-item">
+                            <strong>76.8%</strong>
+                            <span>UNet相比准确率提升</span>
+                        </div>
+                        <div class="metric-item">
+                            <strong>1472</strong>
+                            <span>参数量(万)</span>
+                        </div>
+                        <div class="metric-item">
+                            <strong>99.7%</strong>
+                            <span>BUU Spine Dataset准确率*</span>
+                        </div>
+                    </div>
+                  <div class="tech-details">
+                    <!--<h4>技术要点与训练细节</h4>-->
+                    <!--<ul>-->
+                    <!--  <li>骨架：使用 <strong>VGG16-BN</strong> 作为编码器（预训练 ImageNet 权重），在多尺度侧输出上采用深度监督（HED 风格 side-output），最终通过 1×1 融合层恢复细线结构。</li>-->
+                    <!--  <li>损失与评价：多输出分支分别使用二值交叉熵 (BCE) 与 Dice 混合损失以平衡稀疏线型目标；评价采用 F1 / IoU / 精确率-召回率曲线。</li>-->
+                    <!--  <li>训练细节：常用优化器 Adam 或 SGD，初始 lr 1e-4（Adam）或 0.01（SGD），batch size 8–32，数据增强包含随机旋转、水平镜像、CLAHE 和局部对比度增强，训练时使用多尺度采样与深监督以加速收敛。</li>-->
+                    <!--  <li>设计动机：相比常规 UNet，VGG16-BN + 多尺度侧输出对“细线”边缘敏感度更高，利于髂骨上沿的连续线段化与精确定位（参考 HED 方法）。</li>-->
+                    <!--</ul>-->
+                    <h5>引用</h5>
+                    <ul style="list-style-type:disc">
+                      <li><a href="https://arxiv.org/abs/1409.1556" target="_blank">Very Deep Convolutional Networks for Large-Scale Image Recognition — Simonyan & Zisserman, 2014 (VGG)</a></li>
+                      <li><a href="https://arxiv.org/abs/1502.03167" target="_blank">Batch Normalization — Ioffe & Szegedy, 2015</a></li>
+                      <li><a href="https://arxiv.org/abs/1504.06375" target="_blank">Holistically-Nested Edge Detection (HED) — Saining Xie & Zhuowen Tu, 2015</a></li>
+                    </ul>
+                    <div class="model-diagram" id="hed-diagram" aria-label="VGG16-BNN 结构图"></div>
+                    <p>*全量数据集，以重合面积大于等于90%为标准</p>
+                  </div>
+                </div>
+                
+                <div class="about-section">
+                    <h3>3. OPLL Segmentation (CT)</h3>
+                    <p>基于 223 例颈部矢状面 CT 数据训练 UNet 模型进行精细颈部后沿韧带骨化预测。</p>
+                    <div class="metric-row">
+                        <div class="metric-item">
+                            <strong>70.3%</strong>
+                            <span>Average Dice</span>
+                        </div>
+                    </div>
+                  <div class="tech-details">
+                    <h4>技术要点与训练细节</h4>
+                    <ul>
+                      <li>架构：基于经典 <strong>U-Net</strong>（2D）进行端到端分割，采用下采样-上采样对称结构以保证精细边界恢复；损失采用 Dice + BCE 混合以兼顾区域与边界质量。</li>
+                      <!--<li>影像预处理：CT 窗位窗宽预设（骨窗），重采样至统一体素间距，强度标准化（z-score 或 min-max），可能使用切片级增强与切片间上下文融合（2.5D）以提高小病灶检出率。</li>-->
+                      <!--<li>训练配置：Adam 优化器，初始 lr 1e-4，batch size 4–16（视显存），训练长度 100–300 epochs，使用滑动窗口或全图训练以处理大分辨率 CT 切片；推理时采用概率阈值与形态后处理去除离散伪阳性。</li>-->
+                      <!--<li>临床数据与可重复性：本模型基于 223 例颈部矢状 CT 数据构建。   </li>-->
+                    </ul>
+                    <h5>引用</h5>
+                    <ul style="list-style-type:disc">
+                      <li><a href="https://arxiv.org/abs/1505.04597" target="_blank">U-Net: Convolutional Networks for Biomedical Image Segmentation — Ronneberger et al., 2015</a></li>
+                      <li><a href="https://pubmed.ncbi.nlm.nih.gov/35587949/" target="_blank">Le et al., J Am Acad Orthop Surg. 2022 — "Ossification of the Posterior Longitudinal Ligament: Pathophysiology, Diagnosis, and Management" (综述)</a></li>
+                    </ul>
+                    <div class="model-diagram" id="unet-diagram" aria-label="U-Net 结构图"></div>
+                  </div>
+                </div>
+                
+                <div class="about-section">
+                    <h3>4. 语言大模型接入辅助诊断</h3>
+                    <p>可接入<b>豆包Seed</b>、<b>DeepSeek</b>等大模型传入量化数据进行辅助诊断。</p>
+                    <div class="metric-row">
+                        <div class="metric-item">
+                            <strong>患者+医生端整合</strong>
+                            <span>整合方案</span>
+                        </div>
+                        <div class="metric-item">
+                            <strong>-</strong>
+                            <span>-</span>
+                        </div>
+                    </div>
+                </div>
+
+                
+
+            </div>
+        </div>
+
+        <!-- team -->
+        <div id="page-team" class="page-view">
+            <div class="about-content">
+                <div class="about-section">
+
+                </div>
+            </div>
+        </div>
+
+                <!-- status -->
+        <div id="page-status" class="page-view">
+            <div class="about-content">
+                <style>
+                    .status-bar { height: 8px; background: #e2e8f0; border-radius: 6px; overflow: hidden; }
+                    .status-bar-fill { height: 100%; width: 0%; background: #22c55e; transition: width 0.25s ease; }
+                    .status-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+                    .status-chart { width: 100%; height: 80px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+                </style>
+                <div class="about-section">
+                    <h3>远程推理服务状态</h3>
+                    <div class="metric-row">
+                        <div class="metric-item">
+                            <strong id="status-text">检查中...</strong><span id="status-sub">等待响应</span>
+                        </div>
+                        <div class="metric-item">
+                            <strong id="status-latency">- ms</strong>
+                        </div>
+                        <div class="metric-item">
+                            <strong id="status-updated">-</strong>
+                            <span>最后更新</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="about-section">
+                    <h3>资源使用情况</h3>
+                    <div class="metric-row">
+                        <div class="metric-item">
+                            <strong id="status-cpu">-</strong>
+                            <span>CPU 使用率</span>
+                            <div class="status-bar"><div id="bar-cpu" class="status-bar-fill"></div></div>
+                        </div>
+                        <div class="metric-item">
+                            <strong id="status-ram">-</strong>
+                            <span>内存使用率</span>
+                            <div class="status-bar"><div id="bar-ram" class="status-bar-fill"></div></div>
+                        </div>
+                        <div class="metric-item">
+                            <strong id="status-rss">-</strong>
+                            <span>进程内存使用</span>
+                        </div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-item">
+                            <strong id="status-gpu">-</strong>
+                            <span>GPU 使用率 (allocated)</span>
+                            <div class="status-bar"><div id="bar-gpu" class="status-bar-fill"></div></div>
+                        </div>
+                        <div class="metric-item">
+                            <strong id="status-gpu-reserved">-</strong>
+                            <span>GPU 使用率 (reserved)</span>
+                        </div>
+                        <div class="metric-item">
+                            <strong id="status-gpu-count">-</strong>
+                            <span>GPU 数量</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="about-section">
+                    <h3>性能图表</h3>
+                    <div class="status-grid">
+                        <p>CPU</p>
+                        <p>MEM</p>
+                    </div>
+                    <div class="status-grid">
+                        <canvas id="status-chart-cpu" class="status-chart"></canvas>
+                        <canvas id="status-chart-ram" class="status-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+<!-- board -->
+        <div id="page-board" class="page-view">
+            <!-- <div class="about-content">
+                <div class="about-section">
+                    <h3>更新 HealthIT-AI脊柱辅助诊断系统 V1.0 - HRNet</h3>
+                    <p>- 2026 / 1 / 24   3:13</p>
+
+                    <div style="text-indent: 2em;line-height: 30px;">
+                        <p style='color: black'>将传统通过<strong>点标记</strong>训练的 UNet 峰值 22 通道分类模型 + UNet ROI 窗口粗分割模型 替换为对线性顺序和先验顺序更精确的 HRNet 模型，识别率提高并且对于复杂情况的识别能力大幅提升。</p>
+                        
+                        <p style='color: black'>将 UNet 训练的髂脊线识别模型（UNet 只适合进行分割，对于线段识别定位预测为概率热图，并不方便进行线段化）替换为 VGG16-BN 专注于线段提取。</p>
+                        <div style='text-align: center'>
+                            <img style='height: 300px;' src='./static/img/compressed/HRNet_sample.png' />
+                            <img style='height: 300px;' src='./static/img/compressed/8_line.png' />
+                        </div>
+                        <p style='font-size: 12px; text-align:center'>HRNet / VGG-16BN 精确标记例</p>
+                    </div>
+                </div>
+            </div> -->
+
+            <div class="about-content">
+                <div class="about-section">
+                    <h3>更新 HealthIT-AI脊柱辅助诊断系统 V1.0 - HRNet + VGG16-BN</h3>
+                    <p>- 2026 / 1 / 24   3:13</p>
+                    <!--<div class="metric-row">-->
+                    <div style="text-indent: 2em;line-height: 30px;">
+                        <p style='color: black'>将传统通过<strong>点标记</strong>训练的 UNet 峰值 22 通道分类模型 + UNet ROI 窗口粗分割模型 替换为对线性顺序和先验顺序更精确的 HRNet 模型，识别率提高并且对于复杂情况的识别能力大幅提升。</p>
+                        
+                        <p style='color: black'>将 UNet 训练的髂脊线识别模型（UNet 只适合进行分割，对于线段识别定位预测为概率热图，并不方便进行线段化）替换为 VGG16-BN 专注于线段提取。</p>
+                        <div style='text-align: center'>
+                            <img style='height: 300px;' src='./static/img/compressed/HRNet_sample.png' />
+                            <img style='height: 300px;' src='./static/img/compressed/8_line.png' />
+                        </div>
+                        <p style='font-size: 12px; text-align:center'>HRNet / VGG-16BN 精确标记例</p>
+                    </div>
+                    <!--</div>-->
+                </div>
+            </div>
+            
+            <div class="about-content">
+                <div class="about-section">
+                    <h3>更新 HealthIT-AI脊柱辅助诊断系统 Beta - L4/L5 Locator 模型</h3>
+                    <p>- 2026 / 1 / 23   12:00</p>
+                    <!--<div class="metric-row">-->
+                    <div style="text-indent: 2em;line-height: 30px;">
+                        <p style='color: black'>因为 UNet 本身并不具备学习线性关系、先验关系的能力，只能在训练阶段通过 Loss 约束各个通道的信息，但是更易使得模型只学习到椎骨的图谱相对位置，并不适合做定位。</p>
+                        
+                        <p style='color: black'>将 UNet 22通道 版本替换为 UNet ROI 椎骨粗分割模型 + UNet 22通道分类版本，让 ROI 粗分割窗口做先验识别，准确度相比于传统 22通道 UNet 提高约 31% .</p>
+                        
+                        <img style='width: 100%' src='./static/img/compressed/ROI_sample.png' />
+                        <p style='font-size: 12px; text-align:center'>ROI 粗分割例</p>
+                        <img style='width: 100%' src='./static/img/compressed/UNet_sample.png' />
+                        <p style='font-size: 12px; text-align:center'>UNet 精确标记例</p>
+                    </div>
+                    <!--</div>-->
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Example Selection Modal -->
+        <div id="example-modal" class="modal-backdrop" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+            <div class="modal-content" style="background:white; padding:20px; border-radius:12px; width:90%; max-width:600px; max-height:80vh; overflow-y:auto;">
+                <h3 style="margin-top:0; color:#1e293b;">选择测试例图</h3>
+                <div class="example-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:15px; margin-top:15px;">
+                    <div onclick="selectExample(1)" class="ex-item"><img src="/static/img/compressed/1.png" loading="lazy"><span>Img 1</span></div>
+                    <div onclick="selectExample(2)" class="ex-item"><img src="/static/img/compressed/2.png" loading="lazy"><span>Img 2</span></div>
+                    <div onclick="selectExample(3)" class="ex-item"><img src="/static/img/compressed/3.png" loading="lazy"><span>Img 3</span></div>
+                    <div onclick="selectExample(4)" class="ex-item"><img src="/static/img/compressed/4.png" loading="lazy"><span>Img 4</span></div>
+                    <div onclick="selectExample(5)" class="ex-item"><img src="/static/img/compressed/5.png" loading="lazy"><span>Img 5</span></div>
+                    <div onclick="selectExample(6)" class="ex-item"><img src="/static/img/compressed/6.png" loading="lazy"><span>Img 6</span></div>
+                </div>
+                <button onclick="closeExampleModal()" style="margin-top:20px; padding:8px 20px; border:none; background:#e2e8f0; border-radius:6px; cursor:pointer; color:#475569;">关闭</button>
+            </div>
+            <style>
+                .ex-item { border:2px solid #e2e8f0; border-radius:8px; overflow:hidden; cursor:pointer; transition:all 0.2s; text-align:center; padding-bottom:5px;}
+                .ex-item:hover { border-color:#3b82f6; transform:translateY(-2px); box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); }
+                .ex-item img { width:100%; height:120px; object-fit:cover; display:block; margin-bottom:5px; background:#f1f5f9; }
+                .ex-item span { font-size:12px; color:#64748b; font-weight:500; }
+            </style>
+        </div>
+
+    </main>
+
+    <script>
+document.addEventListener('DOMContentLoaded', () => {
+  // DOM refs
+  const dropZone     = document.getElementById('drop-zone');
+  const fileInput    = document.getElementById('file-input');
+  const resultImg    = document.getElementById('result-img');
+  const resultCanvas = document.querySelector('.result-canvas');
+  const emptyState   = document.getElementById('empty-placeholder');
+  const loading      = document.getElementById('loading');
+  const errorOverlay = document.getElementById('error-overlay');
+  const errorMsg     = document.getElementById('error-msg');
+  const confInput    = document.getElementById('conf-input');
+  const confDisplay  = document.getElementById('conf-display');
+  const chatLog      = document.getElementById('chat-log');
+  const chatText     = document.getElementById('chat-text');
+  const chatSend     = document.getElementById('chat-send');
+  const chatMask     = document.getElementById('chat-mask');
+  const chatPanel    = document.getElementById('chat-panel');
+  const thyroidFileInput = document.getElementById('thyroid-file');
+  const thyroidUploadBtn = document.getElementById('thyroid-upload-btn');
+  const thyroidExampleBtn = document.getElementById('thyroid-example-btn');
+  const thyroidRunBtn = document.getElementById('thyroid-run-btn');
+  const thyroidPreview = document.getElementById('thyroid-preview');
+  const thyroidResultImg = document.getElementById('thyroid-result-img');
+  const thyroidPlaceholder = document.getElementById('thyroid-placeholder');
+  const thyroidStatusBar = document.getElementById('thyroid-status-bar');
+  const thyroidMeta = document.getElementById('thyroid-meta');
+  const thyroidModel = document.getElementById('thyroid-model');
+  const statusText   = document.getElementById('status-text');
+  const statusSub    = document.getElementById('status-sub');
+  const statusLatency = document.getElementById('status-latency');
+  const statusUpdated = document.getElementById('status-updated');
+  const statusCpu     = document.getElementById('status-cpu');
+  const statusRam     = document.getElementById('status-ram');
+  const statusRss     = document.getElementById('status-rss');
+  const statusGpu     = document.getElementById('status-gpu');
+  const statusGpuReserved = document.getElementById('status-gpu-reserved');
+  const statusGpuCount = document.getElementById('status-gpu-count');
+  const barCpu        = document.getElementById('bar-cpu');
+  const barRam        = document.getElementById('bar-ram');
+  const barGpu        = document.getElementById('bar-gpu');
+  const chartCpu      = document.getElementById('status-chart-cpu');
+  const chartRam      = document.getElementById('status-chart-ram');
+  let currentModel   = 'l4l5';
+  let detectionData  = null;
+  let conversationHistory = [];
+  let isChatEnabled = true;
+  // zoom state
+  let zScale = 1, zTx = 0, zTy = 0, zDragging = false, zLastX = 0, zLastY = 0;
+  // 通过后端代理获取远端状态（避免前端直连非 HTTPS）
+  const STATUS_BASE_URL = '';
+  const STATUS_INTERVAL_MS = 1000;
+  let statusTimer = null;
+  const cpuHistory = [];
+  const ramHistory = [];
+  let thyroidExampleB64 = null;
+
+  function applyZoom() {
+    if (!resultImg) return;
+    resultImg.style.transform = `translate(-50%,-50%) translate(${zTx}px, ${zTy}px) scale(${zScale})`;
+  }
+  function resetZoom() {
+    zScale = 1; zTx = 0; zTy = 0; applyZoom();
+  }
+
+  function formatGbFromMb(val) {
+    if (val === undefined || val === null || Number.isNaN(val)) return '-';
+    return `${(Number(val) / 1024).toFixed(2)} GB`;
+  }
+
+  function clampPercent(val) {
+    if (val === undefined || val === null || Number.isNaN(val)) return 0;
+    return Math.max(0, Math.min(100, Number(val)));
+  }
+
+  function setBar(el, percent) {
+    if (!el) return;
+    const p = clampPercent(percent);
+    el.style.width = `${p}%`;
+    el.style.background = p >= 85 ? '#ef4444' : p >= 60 ? '#f59e0b' : '#22c55e';
+  }
+
+  function pushHistory(arr, val, max = 60) {
+    if (val === undefined || val === null || Number.isNaN(val)) return;
+    arr.push(Number(val));
+    if (arr.length > max) arr.shift();
+  }
+
+  // Thyroid demo helpers
+  function thyroidStatusMsg(msg, isError = false) {
+    if (thyroidStatusBar) {
+      thyroidStatusBar.innerText = msg;
+      thyroidStatusBar.style.color = isError ? '#ef4444' : '#475569';
+      thyroidStatusBar.style.borderColor = isError ? '#fca5a5' : '#e2e8f0';
+      thyroidStatusBar.style.background = '#fff';
+    }
+  }
+
+  async function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = reader.result || '';
+        resolve(res.toString().split(',').pop());
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function runThyroidInference() {
+    if (!thyroidResultImg || !thyroidPlaceholder) return;
+    try {
+      const file = thyroidFileInput?.files?.[0];
+      let b64 = null;
+      if (file) {
+        thyroidStatusMsg('上传中...');
+        b64 = await fileToBase64(file);
+      } else if (thyroidExampleB64) {
+        thyroidStatusMsg('使用示例图...');
+        b64 = thyroidExampleB64;
+      } else {
+        thyroidStatusMsg('请先选择图片', true);
+        return;
+      }
+      thyroidPlaceholder.style.display = 'flex';
+      thyroidResultImg.style.display = 'none';
+      thyroidStatusMsg('调用推理接口...');
+      const payload = {
+        image_base64: b64,
+        model_id: thyroidModel ? thyroidModel.value : 'swin-unet',
+      };
+      const resp = await fetch('/api/thyroid/infer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (data.status !== 'ok') throw new Error(data.message || '未知错误');
+      if (data.image_base64) {
+        thyroidResultImg.src = `data:${data.image_mimetype || 'image/png'};base64,${data.image_base64}`;
+        thyroidResultImg.style.display = 'block';
+        thyroidPlaceholder.style.display = 'none';
+      }
+      if (thyroidMeta) {
+        thyroidMeta.innerText = `模型: ${data.model_id || 'n/a'} | dice: ${data.dice ?? '—'} | ${data.message || 'placeholder'}`;
+      }
+      thyroidStatusMsg('完成');
+    } catch (err) {
+      thyroidStatusMsg(`请求失败: ${err.message}`, true);
+    }
+  }
+
+  function drawChart(canvas, data, color) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.clientWidth || 240;
+    const h = canvas.clientHeight || 80;
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    ctx.clearRect(0, 0, w, h);
+    if (!data || data.length < 2) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const maxVal = 100;
+    data.forEach((v, i) => {
+      const x = (i / (data.length - 1)) * (w - 8) + 4;
+      const y = h - (v / maxVal) * (h - 8) - 4;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  function updateStatusUI({ ok, latencyMs, viaProxy, data, error }) {
+    if (!statusText) return;
+    if (!ok) {
+      statusText.innerText = '离线';
+      statusSub.innerText = '无法连接';
+      if (statusLatency) statusLatency.innerText = '- ms';
+      if (statusUpdated) statusUpdated.innerText = new Date().toLocaleTimeString();
+      return;
+    }
+    statusText.innerText = '在线';
+    statusSub.innerText = viaProxy ? '通过云端代理' : '直连远程';
+    if (statusLatency) statusLatency.innerText = `${latencyMs} ms`;
+    if (statusUpdated) statusUpdated.innerText = new Date().toLocaleTimeString();
+    if (statusCpu && data && data.cpu_percent !== undefined) statusCpu.innerText = `${data.cpu_percent}%`;
+    if (statusRam && data && data.ram_used_mb !== undefined) {
+      const total = data.ram_total_mb ? ` / ${(Number(data.ram_total_mb) / 1024).toFixed(2)} GB` : '';
+      statusRam.innerText = `${(Number(data.ram_used_mb) / 1024).toFixed(2)} GB${total}`;
+    }
+    if (statusRss && data && data.process_rss_mb !== undefined) statusRss.innerText = formatGbFromMb(data.process_rss_mb);
+    if (data) {
+      setBar(barCpu, data.cpu_percent);
+      setBar(barRam, data.ram_percent);
+      const gpuPct = data.gpu_mem_reserved_mb ? (Number(data.gpu_mem_allocated_mb || 0) / Number(data.gpu_mem_reserved_mb || 1)) * 100 : 0;
+      setBar(barGpu, gpuPct);
+      pushHistory(cpuHistory, data.cpu_percent);
+      pushHistory(ramHistory, data.ram_percent);
+      drawChart(chartCpu, cpuHistory, '#3b82f6');
+      drawChart(chartRam, ramHistory, '#22c55e');
+    }
+    if (data && data.cuda_available) {
+      if (statusGpu) statusGpu.innerText = formatGbFromMb(data.gpu_mem_allocated_mb);
+      if (statusGpuReserved) statusGpuReserved.innerText = formatGbFromMb(data.gpu_mem_reserved_mb);
+      if (statusGpuCount) statusGpuCount.innerText = data.gpu_count ?? '-';
+    } else {
+      if (statusGpu) statusGpu.innerText = '-';
+      if (statusGpuReserved) statusGpuReserved.innerText = '-';
+      if (statusGpuCount) statusGpuCount.innerText = '0';
+    }
+  }
+
+  async function fetchStatus() {
+    if (!statusText) return;
+    const start = performance.now();
+    let data = null;
+    try {
+      const resp = await fetch('/api/remote_metrics', { cache: 'no-store' });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const proxy = await resp.json();
+      data = proxy.metrics || proxy;
+    } catch (err) {
+      updateStatusUI({ ok: false, error: err.message });
+      return;
+    }
+    const latencyMs = Math.round(performance.now() - start);
+    updateStatusUI({ ok: true, latencyMs, viaProxy: true, data });
+  }
+
+  function isStatusVisible() {
+    const el = document.getElementById('page-status');
+    return !!(el && el.classList.contains('active-view'));
+  }
+
+  function startStatusPolling() {
+    if (statusTimer) return;
+    fetchStatus();
+    statusTimer = setInterval(() => {
+      if (isStatusVisible()) fetchStatus();
+    }, STATUS_INTERVAL_MS);
+  }
+
+  function stopStatusPolling() {
+    if (statusTimer) {
+      clearInterval(statusTimer);
+      statusTimer = null;
+    }
+  }
+
+  // Navigation
+  function switchPage(pageId, navItem) {
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    navItem.classList.add('active');
+    const labels = {
+      'inference': '在线推理',
+      'thyroid': '甲状腺结节Demo',
+      'about': '项目简介',
+      'team': '团队介绍',
+      'board': '项目公告',
+      'status': '服务状态'
+    };
+    document.getElementById('header-title').innerText = labels[pageId];
+    document.querySelectorAll('.page-view').forEach(el => el.classList.remove('active-view'));
+    document.getElementById('page-' + pageId).classList.add('active-view');
+    if (pageId === 'status') startStatusPolling();
+    else stopStatusPolling();
+  }
+  window.switchPage = switchPage;
+
+  // Sidebar toggle
+  window.toggleSidebar = function() {
+    const sidebar = document.getElementById('sidebar');
+    sidebar.classList.toggle('collapsed');
+  };
+
+  // Model tabs
+  function switchModel(modelId, tabItem) {
+    currentModel = modelId;
+    document.querySelectorAll('.model-tab').forEach(el => el.classList.remove('active-tab'));
+    tabItem.classList.add('active-tab');
+    const descEl = document.getElementById('model-desc');
+    if (modelId === 'l4l5') {
+      descEl.innerText = "针对常规 X-Ray 影像，自动定位 L1-S1 关键点并生成 L4/L5 椎体结构分析图。支持 CLAHE 增强。";
+      isChatEnabled = true;
+      if (chatMask) chatMask.style.display = detectionData ? 'none' : 'flex';
+      setChatVisibility(true);
+    } else {
+      descEl.innerText = "针对颈椎 CT 轴位，自动分割 OPLL 病灶区域。";
+      isChatEnabled = false;
+      if (chatMask) chatMask.style.display = 'flex';
+      // chatMask.innerHTML = 'OPLL模式不支持聊天功能';
+      setChatVisibility(false);
+    }
+  }
+  window.switchModel = switchModel;
+
+  const dashboardGrid = document.querySelector('.dashboard-grid');
+
+  // Show/hide chat panel with smooth fade and expand other columns
+  function setChatVisibility(visible) {
+    if (!chatPanel || !dashboardGrid) return;
+    if (visible) {
+      // restore grid columns (right column original 320px)
+      dashboardGrid.style.gridTemplateColumns = '280px 1fr 320px';
+      chatPanel.classList.remove('hidden');
+      // ensure mask visibility set appropriately
+      if (chatMask) chatMask.style.display = detectionData ? 'none' : 'flex';
+    } else {
+      // collapse right column to 0 so other two expand
+      dashboardGrid.style.gridTemplateColumns = '280px 1fr 0px';
+      // fade chat out
+      chatPanel.classList.add('hidden');
+    }
+  }
+
+  // initialize chat visibility based on default model
+  setChatVisibility(currentModel !== 'opll');
+
+  // Thyroid demo wiring
+  if (thyroidUploadBtn && thyroidFileInput) {
+    thyroidUploadBtn.addEventListener('click', () => thyroidFileInput.click());
+    thyroidUploadBtn.addEventListener('dragover', e => { e.preventDefault(); });
+    thyroidUploadBtn.addEventListener('drop', e => {
+      e.preventDefault();
+      if (e.dataTransfer?.files?.length) {
+        thyroidFileInput.files = e.dataTransfer.files;
+        thyroidFileInput.dispatchEvent(new Event('change'));
+      }
+    });
+  }
+
+  if (thyroidFileInput) {
+    thyroidFileInput.addEventListener('change', () => {
+      const file = thyroidFileInput.files && thyroidFileInput.files[0];
+      if (!file) return;
+      thyroidStatusMsg(`已选择：${file.name}`);
+      const url = URL.createObjectURL(file);
+      if (thyroidPreview) {
+        thyroidPreview.src = url;
+        thyroidPreview.style.display = 'block';
+      }
+      thyroidExampleB64 = null; // reset example when user picks a file
+    });
+  }
+
+  if (thyroidExampleBtn) {
+    thyroidExampleBtn.addEventListener('click', async () => {
+      try {
+        thyroidStatusMsg('加载示例图...');
+        const resp = await fetch('/static/img/Thyroid_test1.jpg');
+        const blob = await resp.blob();
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const res = reader.result || '';
+          thyroidExampleB64 = res.toString().split(',').pop();
+          thyroidPreview.src = res;
+          thyroidPreview.style.display = 'block';
+          if (thyroidFileInput) thyroidFileInput.value = '';
+          thyroidStatusMsg('示例图已准备，点击开始预测');
+        };
+        reader.readAsDataURL(blob);
+      } catch (e) {
+        thyroidStatusMsg('示例图加载失败', true);
+      }
+    });
+  }
+
+  if (thyroidRunBtn) {
+    thyroidRunBtn.addEventListener('click', runThyroidInference);
+  }
+
+  // Errors
+  function closeError() { errorOverlay.style.display = 'none'; }
+  window.closeError = closeError;
+  function showError(msg) {
+    errorMsg.innerText = msg;
+    errorOverlay.style.display = 'flex';
+    loading.style.display = 'none';
+  }
+
+  // Conf slider
+  if (confInput) confInput.addEventListener('input', e => confDisplay.innerText = e.target.value);
+
+  // Example modal
+  window.openExampleModal  = () => {
+    const grid = document.querySelector('.example-grid');
+    const folder = currentModel === 'opll' ? 'opll/' : '';
+    grid.innerHTML = `
+      <div onclick="selectExample(1)" class="ex-item"><img src="/static/img/compressed/${folder}1.png" loading="lazy"><span>Img 1</span></div>
+      <div onclick="selectExample(2)" class="ex-item"><img src="/static/img/compressed/${folder}2.png" loading="lazy"><span>Img 2</span></div>
+      <div onclick="selectExample(3)" class="ex-item"><img src="/static/img/compressed/${folder}3.png" loading="lazy"><span>Img 3</span></div>
+      <div onclick="selectExample(4)" class="ex-item"><img src="/static/img/compressed/${folder}4.png" loading="lazy"><span>Img 4</span></div>
+      <div onclick="selectExample(5)" class="ex-item"><img src="/static/img/compressed/${folder}5.png" loading="lazy"><span>Img 5</span></div>
+      <div onclick="selectExample(6)" class="ex-item"><img src="/static/img/compressed/${folder}6.png" loading="lazy"><span>Img 6</span></div>
+    `;
+    document.getElementById('example-modal').style.display = 'flex';
+  };
+  window.closeExampleModal = () => document.getElementById('example-modal').style.display = 'none';
+  window.selectExample     = (id) => { window.closeExampleModal(); handleFile(null, id); };
+
+  // Drag & drop
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = '#3b82f6'; dropZone.style.backgroundColor = '#eff6ff'; });
+  dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = '#e2e8f0'; dropZone.style.backgroundColor = '#fafafa'; });
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#e2e8f0';
+    dropZone.style.backgroundColor = '#fafafa';
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  // Zoom events
+  if (resultCanvas && resultImg) {
+    // 禁止浏览器原生拖拽图片
+    resultImg.addEventListener('dragstart', e => e.preventDefault());
+
+    resultCanvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 1.1 : 0.9;
+      const prevScale = zScale;
+      zScale = Math.min(6, Math.max(0.5, zScale * delta));
+      // keep mouse position stable-ish
+      const rect = resultCanvas.getBoundingClientRect();
+      const cx = e.clientX - rect.left - rect.width / 2;
+      const cy = e.clientY - rect.top - rect.height / 2;
+      zTx += cx * (1/prevScale - 1/zScale);
+      zTy += cy * (1/prevScale - 1/zScale);
+      applyZoom();
+    }, { passive: false });
+
+    resultCanvas.addEventListener('mousedown', e => {
+      zDragging = true;
+      zLastX = e.clientX;
+      zLastY = e.clientY;
+      resultImg.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mouseup', () => { zDragging = false; resultImg.style.cursor = 'grab'; });
+    window.addEventListener('mouseleave', () => { zDragging = false; resultImg.style.cursor = 'grab'; });
+    resultCanvas.addEventListener('mousemove', e => {
+      if (!zDragging) return;
+      const dx = e.clientX - zLastX;
+      const dy = e.clientY - zLastY;
+      zTx += dx;
+      zTy += dy;
+      zLastX = e.clientX;
+      zLastY = e.clientY;
+      applyZoom();
+    });
+    resultCanvas.addEventListener('dblclick', () => resetZoom());
+  }
+  fileInput.addEventListener('change', e => {
+    if (e.target.files.length) {
+      handleFile(e.target.files[0]);
+      fileInput.value = '';
+    }
+  });
+
+  // Core upload handler
+  function handleFile(file, exampleId=null) {
+    if (file && !file.type.startsWith('image/')) { showError('请只上传图片文件 (PNG/JPG)'); return; }
+    errorOverlay.style.display = 'none';
+    resultImg.style.display = 'none';
+    emptyState.style.display = 'none';
+    loading.style.display = 'flex';
+
+    let apiEndpoint = currentModel === 'opll' ? '/api/opll' : '/api/l4l5locator';
+    const formData = new FormData();
+    if (confInput) formData.append('conf', confInput.value);
+    if (exampleId) formData.append('use_example', exampleId);
+    else if (file) formData.append('file', file);
+    else { showError("无文件或例图被选择"); loading.style.display = 'none'; return; }
+
+    fetch(apiEndpoint, { method: 'POST', body: formData })
+      .then(response => {
+        if (response.status === 501) throw new Error("OPLL 功能尚未实现 (Demo)");
+        if (!response.ok) {
+          return response.json().then(errData => { throw new Error(errData.message || response.statusText); })
+            .catch(() => { throw new Error(response.statusText + " (Check Server Logs)"); });
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.status === 'ok') {
+          if (currentModel === 'l4l5') {
+            if (chatMask) chatMask.style.display = 'none';
+            detectionData = {
+              score: data.score,
+              cobb_deg: data.cobb_deg,
+              curvature_deg: data.curvature_deg,
+              curvature_per_seg: data.curvature_per_seg,
+              vertebrae: data.vertebrae,
+              spine_midpoints: data.spine_midpoints,
+              cobb_l2_line: data.cobb_l2_line,
+              cobb_s1_line: data.cobb_s1_line,
+              peak_y: data.peak_y
+            };
+            conversationHistory = [];
+          }
+          resultImg.onload = () => {
+            if (resultCanvas) {
+              resultImg.style.height = resultCanvas.clientHeight + 'px';
+              resultImg.style.width = 'auto';
+              resultImg.style.maxHeight = resultCanvas.clientHeight + 'px';
+            }
+            resetZoom();
+            loading.style.display = 'none';
+            resultImg.style.display = 'block';
+            if (currentModel === 'l4l5') autoSendAIDiagnosis();
+          };
+          resultImg.onerror = () => showError("图片加载失败 (Base64 Decode Error)");
+          resultImg.src = 'data:' + data.image_mimetype + ';base64,' + data.image_base64;
+        } else if (data.status === 'not_implemented') {
+          showError('功能演示中：' + data.message);
+        } else {
+          showError('分析失败: ' + data.message);
+        }
+      })
+      .catch(error => { console.error(error); showError('请求异常: ' + (error.message || 'Network Error')); });
+  }
+
+  // Chat functions
+  function appendChat(sender, msg) {
+    if (!chatLog) return;
+    const div = document.createElement('div');
+    div.className = 'chat-msg ' + (sender === '你' ? 'you' : 'ai');
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    if (sender === 'AI') {
+      bubble.innerHTML = marked.parse(msg);
+    } else {
+      bubble.textContent = `${sender}: ${msg}`;
+    }
+    div.appendChild(bubble);
+    chatLog.appendChild(div);
+    chatLog.scrollTop = chatLog.scrollHeight;
+    return bubble;
+  }
+
+  function autoSendAIDiagnosis() {
+    if (!detectionData) return;
+    const systemMsg = `检测完成，正在进行AI分析...\nScore: ${detectionData.score >= 0 ? '+' : ''}${detectionData.score}, Cobb角: ${detectionData.cobb_deg.toFixed(1)}°, 曲率: ${detectionData.curvature_deg.toFixed(2)}°`;
+    appendChat('系统', systemMsg);
+    sendAIMessage(null, true);
+  }
+
+  function sendAIMessage(userMsg = null, isInitial = false) {
+    if (!isChatEnabled) {
+      appendChat('系统', '当前模式不支持聊天功能');
+      return;
+    }
+    if (!detectionData) {
+      appendChat('系统', '请先上传图片进行检测');
+      return;
+    }
+    
+    if (userMsg) {
+      appendChat('你', userMsg);
+      conversationHistory.push({ role: 'user', content: userMsg });
+    }
+    
+    chatSend.disabled = true;
+    const aiBubble = appendChat('AI', '思考中...');
+    
+    const requestBody = isInitial ? detectionData : {
+      ...detectionData,
+      conversation: conversationHistory
+    };
+    
+    fetch('/api/spine_analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    })
+    .then(response => {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let aiResponse = '';
+      aiBubble.innerHTML = '';
+      
+      function readStream() {
+        reader.read().then(({ done, value }) => {
+          if (done) {
+            chatSend.disabled = false;
+            if (aiResponse) conversationHistory.push({ role: 'assistant', content: aiResponse });
+            return;
+          }
+          
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') {
+                chatSend.disabled = false;
+                if (aiResponse) conversationHistory.push({ role: 'assistant', content: aiResponse });
+                return;
+              }
+              try {
+                const json = JSON.parse(data);
+                if (json.content) {
+                  aiResponse += json.content;
+                  aiBubble.innerHTML = marked.parse(aiResponse);
+                  chatLog.scrollTop = chatLog.scrollHeight;
+                } else if (json.error) {
+                  aiBubble.innerHTML = '错误: ' + json.error;
+                  chatSend.disabled = false;
+                  return;
+                }
+              } catch (e) {}
+            }
+          }
+          readStream();
+        });
+      }
+      readStream();
+    })
+    .catch(error => {
+      aiBubble.innerHTML = '请求失败: ' + error.message;
+      chatSend.disabled = false;
+    });
+  }
+
+  if (chatSend) {
+    chatSend.addEventListener('click', () => {
+      const msg = chatText ? chatText.value.trim() : '';
+      if (!msg) return;
+      sendAIMessage(msg);
+      chatText.value = '';
+    });
+  }
+  
+  if (chatText) {
+    chatText.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const msg = chatText.value.trim();
+        if (msg) {
+          sendAIMessage(msg);
+          chatText.value = '';
+        }
+      }
+    });
+  }
+
+  // --- Model diagram rendering ---
+  function makeSVG(tag, attrs) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const el = document.createElementNS(ns, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  function setupDiagram(container) {
+    container.innerHTML = '';
+    const tip = document.createElement('div');
+    tip.className = 'diagram-tooltip';
+    container.appendChild(tip);
+    return tip;
+  }
+
+  function bindTooltip(target, text, container, tip) {
+    const place = (e) => {
+      const rect = container.getBoundingClientRect();
+      tip.style.left = (e.clientX - rect.left) + 'px';
+      tip.style.top = (e.clientY - rect.top - 10) + 'px';
+    };
+    target.addEventListener('mouseenter', (e) => {
+      tip.style.display = 'block';
+      tip.textContent = text;
+      place(e);
+    });
+    target.addEventListener('mousemove', place);
+    target.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  }
+
+  function addArrowDefs(svg, id, color) {
+    const defs = makeSVG('defs', {});
+    const marker = makeSVG('marker', {
+      id,
+      viewBox: '0 0 10 10',
+      refX: '7',
+      refY: '5',
+      markerWidth: '6',
+      markerHeight: '6',
+      orient: 'auto'
+    });
+    marker.appendChild(makeSVG('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: color }));
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+    return `url(#${id})`;
+  }
+
+  function addText(svg, attrs, text) {
+    const el = makeSVG('text', attrs);
+    el.textContent = text;
+    svg.appendChild(el);
+    return el;
+  }
+
+  function drawHRNetDiagram() {
+    const container = document.getElementById('hrnet-diagram');
+    if (!container) return;
+    const tip = setupDiagram(container);
+    const svg = makeSVG('svg', { viewBox: '0 0 920 200', preserveAspectRatio: 'xMidYMid meet' });
+    const arrow = addArrowDefs(svg, 'arrow-hrnet', 'rgba(3,102,214,0.85)');
+
+    const blockW = 74;
+    const blockH = 22;
+    const rowGap = 32;
+    const topY = 30;
+    const rows = [0, 1, 2, 3].map(i => topY + i * rowGap);
+    const stageX = [240, 360, 480, 600];
+    const stageLabels = ['Stage1', 'Stage2', 'Stage3', 'Stage4'];
+    const resLabels = ['1x', '1/2x', '1/4x', '1/8x'];
+
+    const input = makeSVG('rect', { x: 20, y: rows[0], width: 70, height: blockH, rx: 6, class: 'diagram-node' });
+    svg.appendChild(input);
+    addText(svg, { x: 26, y: rows[0] + 15, class: 'diagram-text' }, 'Input');
+    addText(svg, { x: 26, y: rows[0] + 27, class: 'diagram-muted' }, '1xH x W');
+    bindTooltip(input, 'Input X-Ray (1-channel)', container, tip);
+
+    const stem = makeSVG('rect', { x: 110, y: rows[0], width: 90, height: blockH, rx: 6, class: 'diagram-node' });
+    svg.appendChild(stem);
+    addText(svg, { x: 118, y: rows[0] + 15, class: 'diagram-text' }, 'Stem');
+    addText(svg, { x: 118, y: rows[0] + 27, class: 'diagram-muted' }, 'Conv + BN');
+    bindTooltip(stem, 'Stem: 3x3 convs + BN + ReLU', container, tip);
+    svg.appendChild(makeSVG('line', { x1: 90, y1: rows[0] + blockH / 2, x2: 110, y2: rows[0] + blockH / 2, stroke: '#60a5fa', 'stroke-width': 2, 'marker-end': arrow }));
+
+    const stageBlocks = [];
+    stageLabels.forEach((label, sIdx) => {
+      const rowsCount = sIdx + 1;
+      const groupX = stageX[sIdx] - 8;
+      const groupY = rows[0] - 16;
+      const groupH = (rowsCount - 1) * rowGap + blockH + 20;
+      svg.appendChild(makeSVG('rect', {
+        x: groupX,
+        y: groupY,
+        width: blockW + 16,
+        height: groupH,
+        rx: 8,
+        fill: 'none',
+        stroke: '#cbd5f5',
+        'stroke-width': 1,
+        'stroke-dasharray': '4 3'
+      }));
+      addText(svg, { x: groupX + 4, y: groupY - 4, class: 'diagram-muted' }, label);
+
+      stageBlocks[sIdx] = [];
+      for (let r = 0; r < rowsCount; r++) {
+        const x = stageX[sIdx];
+        const y = rows[r];
+        const rect = makeSVG('rect', { x, y, width: blockW, height: blockH, rx: 6, class: 'diagram-node' });
+        svg.appendChild(rect);
+        addText(svg, { x: x + 8, y: y + 15, class: 'diagram-text' }, resLabels[r]);
+        bindTooltip(rect, `${label} - ${resLabels[r]} stream\nResidual blocks + exchange`, container, tip);
+        stageBlocks[sIdx].push({ x, y });
+      }
+
+      const fx = stageX[sIdx] + blockW / 2;
+      svg.appendChild(makeSVG('line', {
+        x1: fx, y1: rows[0] + blockH / 2,
+        x2: fx, y2: rows[rowsCount - 1] + blockH / 2,
+        stroke: '#93c5fd',
+        'stroke-width': 1.2
+      }));
+    });
+
+    svg.appendChild(makeSVG('line', {
+      x1: 200, y1: rows[0] + blockH / 2,
+      x2: stageX[0], y2: rows[0] + blockH / 2,
+      stroke: '#60a5fa',
+      'stroke-width': 2,
+      'marker-end': arrow
+    }));
+
+    for (let s = 0; s < stageBlocks.length - 1; s++) {
+      for (let r = 0; r < stageBlocks[s].length; r++) {
+        const a = stageBlocks[s][r];
+        const b = stageBlocks[s + 1][r];
+        svg.appendChild(makeSVG('line', {
+          x1: a.x + blockW, y1: a.y + blockH / 2,
+          x2: b.x, y2: b.y + blockH / 2,
+          stroke: '#60a5fa',
+          'stroke-width': 1.6,
+          'marker-end': arrow
+        }));
+      }
+      if (stageBlocks[s + 1].length > stageBlocks[s].length) {
+        const from = stageBlocks[s][stageBlocks[s].length - 1];
+        const to = stageBlocks[s + 1][stageBlocks[s + 1].length - 1];
+        svg.appendChild(makeSVG('line', {
+          x1: from.x + blockW, y1: from.y + blockH / 2,
+          x2: to.x, y2: to.y + blockH / 2,
+          stroke: '#94a3b8',
+          'stroke-width': 1.2,
+          'stroke-dasharray': '4 3'
+        }));
+      }
+    }
+
+    const head = makeSVG('rect', { x: 720, y: 56, width: 150, height: 60, rx: 8, class: 'diagram-node' });
+    svg.appendChild(head);
+    addText(svg, { x: 732, y: 78, class: 'diagram-text' }, 'Fusion Head');
+    addText(svg, { x: 732, y: 94, class: 'diagram-muted' }, '1x1 Conv + Heatmap');
+    bindTooltip(head, 'Multi-res fusion -> 1x1 conv -> keypoint heatmaps', container, tip);
+
+    stageBlocks[3].forEach((b, idx) => {
+      const targetY = 64 + idx * 14;
+      svg.appendChild(makeSVG('line', {
+        x1: b.x + blockW, y1: b.y + blockH / 2,
+        x2: 720, y2: targetY,
+        stroke: '#60a5fa',
+        'stroke-width': 1.2,
+        'stroke-dasharray': '3 3'
+      }));
+    });
+
+    const out = makeSVG('rect', { x: 880, y: 70, width: 30, height: 22, rx: 5, class: 'diagram-node' });
+    svg.appendChild(out);
+    addText(svg, { x: 882, y: 84, class: 'diagram-muted' }, 'KP');
+    svg.appendChild(makeSVG('line', {
+      x1: 870, y1: 86,
+      x2: 880, y2: 81,
+      stroke: '#60a5fa',
+      'stroke-width': 2,
+      'marker-end': arrow
+    }));
+
+    container.appendChild(svg);
+  }
+
+  function drawVGG16BNNDiagram() {
+    const container = document.getElementById('hed-diagram');
+    if (!container) return;
+    const tip = setupDiagram(container);
+    const svg = makeSVG('svg', { viewBox: '0 0 920 200', preserveAspectRatio: 'xMidYMid meet' });
+    const arrow = addArrowDefs(svg, 'arrow-vgg', 'rgba(3,102,214,0.85)');
+
+    addText(svg, { x: 20, y: 16, class: 'diagram-muted' }, 'VGG16-BNN: BinaryConv + BN + ReLU');
+
+    const input = makeSVG('rect', { x: 20, y: 32, width: 70, height: 26, rx: 6, class: 'diagram-node' });
+    svg.appendChild(input);
+    addText(svg, { x: 26, y: 49, class: 'diagram-text' }, 'Input');
+    bindTooltip(input, 'Input image (1-channel)', container, tip);
+
+    const blocks = [
+      { name: 'Block1', ch: 64, reps: 2 },
+      { name: 'Block2', ch: 128, reps: 2 },
+      { name: 'Block3', ch: 256, reps: 3 },
+      { name: 'Block4', ch: 512, reps: 3 },
+      { name: 'Block5', ch: 512, reps: 3 }
+    ];
+    const blockW = 100;
+    const blockH = 36;
+    const startX = 120;
+    const gap = 120;
+    const topY = 26;
+    const sideY = 82;
+
+    blocks.forEach((b, i) => {
+      const x = startX + i * gap;
+      const rect = makeSVG('rect', { x, y: topY, width: blockW, height: blockH, rx: 6, class: 'diagram-node' });
+      svg.appendChild(rect);
+      addText(svg, { x: x + 8, y: topY + 16, class: 'diagram-text' }, b.name);
+      addText(svg, { x: x + 8, y: topY + 30, class: 'diagram-muted' }, `${b.ch}ch | W1/A1`);
+      bindTooltip(rect, `${b.name}\nBinaryConv 3x3 x${b.reps}\nBN + ReLU`, container, tip);
+
+      const side = makeSVG('rect', { x: x + blockW / 2 - 14, y: sideY, width: 28, height: 14, rx: 4, class: 'diagram-node' });
+      svg.appendChild(side);
+      addText(svg, { x: x + blockW / 2, y: sideY + 11, 'text-anchor': 'middle', class: 'diagram-muted' }, 'Side');
+
+      svg.appendChild(makeSVG('line', {
+        x1: x + blockW / 2, y1: topY + blockH,
+        x2: x + blockW / 2, y2: sideY,
+        stroke: '#60a5fa',
+        'stroke-width': 1.2
+      }));
+
+      if (i === 0) {
+        svg.appendChild(makeSVG('line', {
+          x1: 90, y1: topY + blockH / 2,
+          x2: x, y2: topY + blockH / 2,
+          stroke: '#60a5fa',
+          'stroke-width': 2,
+          'marker-end': arrow
+        }));
+      } else {
+        const prevX = startX + (i - 1) * gap + blockW;
+        svg.appendChild(makeSVG('line', {
+          x1: prevX, y1: topY + blockH / 2,
+          x2: x, y2: topY + blockH / 2,
+          stroke: '#60a5fa',
+          'stroke-width': 2,
+          'marker-end': arrow
+        }));
+      }
+    });
+
+    const fuse = makeSVG('rect', { x: 720, y: 24, width: 120, height: 48, rx: 6, class: 'diagram-node' });
+    svg.appendChild(fuse);
+    addText(svg, { x: 732, y: 44, class: 'diagram-text' }, 'Fuse');
+    addText(svg, { x: 732, y: 60, class: 'diagram-muted' }, '1x1 Conv');
+    bindTooltip(fuse, 'Side outputs fused by 1x1 conv', container, tip);
+
+    blocks.forEach((b, i) => {
+      const sx = startX + i * gap + blockW / 2;
+      svg.appendChild(makeSVG('line', {
+        x1: sx, y1: sideY + 14,
+        x2: 720, y2: 48,
+        stroke: '#94a3b8',
+        'stroke-width': 1.1,
+        'stroke-dasharray': '4 3'
+      }));
+    });
+
+    const out = makeSVG('rect', { x: 860, y: 32, width: 46, height: 26, rx: 6, class: 'diagram-node' });
+    svg.appendChild(out);
+    addText(svg, { x: 868, y: 49, class: 'diagram-text' }, 'Edge');
+    svg.appendChild(makeSVG('line', {
+      x1: 840, y1: 48,
+      x2: 860, y2: 45,
+      stroke: '#60a5fa',
+      'stroke-width': 2,
+      'marker-end': arrow
+    }));
+
+    container.appendChild(svg);
+  }
+
+  function drawUNetDiagram() {
+    const container = document.getElementById('unet-diagram');
+    if (!container) return;
+    const tip = setupDiagram(container);
+    const svg = makeSVG('svg', { viewBox: '0 0 920 240', preserveAspectRatio: 'xMidYMid meet' });
+    const arrow = addArrowDefs(svg, 'arrow-unet', 'rgba(3,102,214,0.85)');
+
+    const enc = [
+      { name: 'Down1', in: 1, out: 64 },
+      { name: 'Down2', in: 64, out: 128 },
+      { name: 'Down3', in: 128, out: 256 },
+      { name: 'Down4', in: 256, out: 512 }
+    ];
+    const dec = [
+      { name: 'Up4', in: 1024, out: 512 },
+      { name: 'Up3', in: 512, out: 256 },
+      { name: 'Up2', in: 256, out: 128 },
+      { name: 'Up1', in: 128, out: 64 }
+    ];
+    const bott = { name: 'Bottleneck', in: 512, out: 1024 };
+
+    const leftX = 70;
+    const rightX = 640;
+    const boxW = 86;
+    const boxH = 26;
+    const vGap = 26;
+    const topY = 18;
+    const encY = [0, 1, 2, 3].map(i => topY + i * (boxH + vGap));
+    const decY = [...encY].reverse();
+
+    const input = makeSVG('rect', { x: 20, y: encY[0], width: 40, height: boxH, rx: 6, class: 'diagram-node' });
+    svg.appendChild(input);
+    addText(svg, { x: 26, y: encY[0] + 17, class: 'diagram-text' }, 'In');
+    svg.appendChild(makeSVG('line', {
+      x1: 60, y1: encY[0] + boxH / 2,
+      x2: leftX, y2: encY[0] + boxH / 2,
+      stroke: '#60a5fa',
+      'stroke-width': 2,
+      'marker-end': arrow
+    }));
+
+    enc.forEach((b, i) => {
+      const y = encY[i];
+      const rect = makeSVG('rect', { x: leftX, y, width: boxW, height: boxH, rx: 6, class: 'diagram-node' });
+      svg.appendChild(rect);
+      addText(svg, { x: leftX + 6, y: y + 16, class: 'diagram-text' }, b.name);
+      addText(svg, { x: leftX + 6, y: y + 27, class: 'diagram-muted' }, `${b.in}->${b.out}`);
+      bindTooltip(rect, `${b.name}\nDoubleConv 3x3 x2`, container, tip);
+      if (i < enc.length - 1) {
+        svg.appendChild(makeSVG('line', {
+          x1: leftX + boxW / 2, y1: y + boxH,
+          x2: leftX + boxW / 2, y2: y + boxH + vGap - 4,
+          stroke: '#60a5fa',
+          'stroke-width': 2,
+          'marker-end': arrow
+        }));
+      }
+    });
+
+    const bx = 360;
+    const by = encY[encY.length - 1] + boxH + 10;
+    const bottleneck = makeSVG('rect', { x: bx, y: by, width: boxW, height: boxH, rx: 6, class: 'diagram-node' });
+    svg.appendChild(bottleneck);
+    addText(svg, { x: bx + 6, y: by + 16, class: 'diagram-text' }, bott.name);
+    addText(svg, { x: bx + 6, y: by + 27, class: 'diagram-muted' }, `${bott.in}->${bott.out}`);
+    bindTooltip(bottleneck, 'Bottom: DoubleConv 3x3 x2', container, tip);
+
+    svg.appendChild(makeSVG('line', {
+      x1: leftX + boxW / 2, y1: encY[encY.length - 1] + boxH,
+      x2: bx + boxW / 2, y2: by,
+      stroke: '#60a5fa',
+      'stroke-width': 2,
+      'marker-end': arrow
+    }));
+
+    dec.forEach((b, i) => {
+      const y = decY[i];
+      const rect = makeSVG('rect', { x: rightX, y, width: boxW, height: boxH, rx: 6, class: 'diagram-node' });
+      svg.appendChild(rect);
+      addText(svg, { x: rightX + 6, y: y + 16, class: 'diagram-text' }, b.name);
+      addText(svg, { x: rightX + 6, y: y + 27, class: 'diagram-muted' }, `${b.in}->${b.out}`);
+      bindTooltip(rect, `${b.name}\nUpConv + DoubleConv`, container, tip);
+      if (i < dec.length - 1) {
+        svg.appendChild(makeSVG('line', {
+          x1: rightX + boxW / 2, y1: y,
+          x2: rightX + boxW / 2, y2: y - vGap + 4,
+          stroke: '#60a5fa',
+          'stroke-width': 2,
+          'marker-end': arrow
+        }));
+      }
+    });
+
+    svg.appendChild(makeSVG('line', {
+      x1: bx + boxW / 2, y1: by + boxH,
+      x2: rightX + boxW / 2, y2: decY[0] + boxH,
+      stroke: '#60a5fa',
+      'stroke-width': 2,
+      'marker-end': arrow
+    }));
+
+    for (let i = 0; i < enc.length; i++) {
+      const sx = leftX + boxW;
+      const sy = encY[i] + boxH / 2;
+      const tx = rightX;
+      const ty = decY[i] + boxH / 2;
+      const mx = (sx + tx) / 2;
+      svg.appendChild(makeSVG('path', {
+        d: `M ${sx} ${sy} C ${mx} ${sy} ${mx} ${ty} ${tx} ${ty}`,
+        stroke: '#94a3b8',
+        'stroke-width': 1.2,
+        'stroke-dasharray': '4 3',
+        fill: 'none'
+      }));
+    }
+
+    const out = makeSVG('rect', { x: 780, y: encY[0], width: 80, height: boxH, rx: 6, class: 'diagram-node' });
+    svg.appendChild(out);
+    addText(svg, { x: 786, y: encY[0] + 17, class: 'diagram-text' }, 'Output');
+    addText(svg, { x: 786, y: encY[0] + 27, class: 'diagram-muted' }, '1x1 Conv');
+    svg.appendChild(makeSVG('line', {
+      x1: rightX + boxW, y1: encY[0] + boxH / 2,
+      x2: 780, y2: encY[0] + boxH / 2,
+      stroke: '#60a5fa',
+      'stroke-width': 2,
+      'marker-end': arrow
+    }));
+
+    container.appendChild(svg);
+  }
+
+  // remote status polling (only when status tab visible)
+  if (isStatusVisible()) startStatusPolling();
+
+  // draw on load
+  drawHRNetDiagram(); drawVGG16BNNDiagram(); drawUNetDiagram();
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <rect width="100%" height="100%" fill="#111" />
+  <rect x="16" y="16" width="608" height="328" rx="8" ry="8" fill="#0e0e0e" stroke="#333"/>
+  <text x="50%" y="50%" fill="#9fbdf7" font-size="20" text-anchor="middle" dominant-baseline="middle">OPLL Image Placeholder</text>
+</svg>

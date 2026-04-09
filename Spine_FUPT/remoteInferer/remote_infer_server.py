@@ -1,5 +1,6 @@
 ﻿import argparse
 import base64
+import json
 import math
 import os
 import time
@@ -7,7 +8,7 @@ import traceback
 import ctypes
 from ctypes import wintypes
 from typing import Optional
-
+import json
 import cv2
 import numpy as np
 from flask import Flask, jsonify, request
@@ -362,6 +363,190 @@ def _compute_pelvic_tilt(points):
     }
 
 
+def _compute_pelvis_topline(points):
+    if not points or len(points) < 2:
+        return None
+
+    pts = np.asarray(points, dtype=np.float32)
+    if pts.ndim != 2 or pts.shape[1] != 2 or pts.shape[0] < 2:
+        return None
+
+    xs = pts[:, 0]
+    median_x = float(np.median(xs))
+    left_pts = pts[xs <= median_x]
+    right_pts = pts[xs > median_x]
+
+    if len(left_pts) == 0 or len(right_pts) == 0:
+        order = np.argsort(xs)
+        split = max(1, len(order) // 2)
+        left_pts = pts[order[:split]]
+        right_pts = pts[order[split:]]
+        if len(left_pts) == 0 or len(right_pts) == 0:
+            return None
+
+    left_point = left_pts[np.argmin(left_pts[:, 1])]
+    right_point = right_pts[np.argmin(right_pts[:, 1])]
+    dx = float(right_point[0] - left_point[0])
+    dy = float(right_point[1] - left_point[1])
+    if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+        return None
+
+    angle = math.degrees(math.atan2(dy, dx))
+    return {
+        "pelvic_topline_deg": round(float(angle), 4),
+        "pelvic_topline_abs_deg": round(abs(float(angle)), 4),
+        "pelvic_top_points": {
+            "left": [round(float(left_point[0]), 2), round(float(left_point[1]), 2)],
+            "right": [round(float(right_point[0]), 2), round(float(right_point[1]), 2)],
+        },
+    }
+
+
+def _annotate_pelvis_overlay(points, overlay: np.ndarray):
+    annotation = {}
+    topline = _compute_pelvis_topline(points)
+    if topline is None:
+        return annotation, overlay
+
+    annotation.update(topline)
+    annotated = overlay.copy()
+    left = topline["pelvic_top_points"]["left"]
+    right = topline["pelvic_top_points"]["right"]
+    left_pt = (int(round(left[0])), int(round(left[1])))
+    right_pt = (int(round(right[0])), int(round(right[1])))
+    cv2.line(annotated, left_pt, right_pt, (0, 255, 0), 2, cv2.LINE_AA)
+    cv2.circle(annotated, left_pt, 5, (0, 255, 0), -1, cv2.LINE_AA)
+    cv2.circle(annotated, right_pt, 5, (0, 255, 0), -1, cv2.LINE_AA)
+    mid_x = (left_pt[0] + right_pt[0]) / 2.0
+    mid_y = (left_pt[1] + right_pt[1]) / 2.0
+    _draw_angle_label(annotated, f"Pelvis top line: {topline['pelvic_topline_deg']:.1f}°", (mid_x + 10, mid_y - 10), (0, 255, 0))
+    return annotation, annotated
+
+
+def _fit_line_angle_and_endpoints(points: np.ndarray, image_shape, scale_factor: float = 0.9):
+    if points is None or len(points) < 2:
+        return None
+    pts = np.asarray(points, dtype=np.float32)
+    if pts.ndim != 2 or pts.shape[0] < 2 or pts.shape[1] != 2:
+        return None
+    try:
+        vx, vy, x0, y0 = cv2.fitLine(pts.reshape(-1, 1, 2), cv2.DIST_L2, 0, 0.01, 0.01).flatten()
+    except Exception:
+        return None
+
+    angle = math.degrees(math.atan2(float(vy), float(vx)))
+    h, w = image_shape[:2]
+    span = max(float(w), float(h)) * float(scale_factor)
+    x1 = float(x0) - float(vx) * span
+    y1 = float(y0) - float(vy) * span
+    x2 = float(x0) + float(vx) * span
+    y2 = float(y0) + float(vy) * span
+    return {
+        "angle_deg": round(float(angle), 4),
+        "point1": [round(x1, 2), round(y1, 2)],
+        "point2": [round(x2, 2), round(y2, 2)],
+        "anchor": [round(float(x0), 2), round(float(y0), 2)],
+    }
+
+
+def _draw_angle_label(image, text: str, origin, color):
+    if origin is None:
+        origin = (20, 30)
+    x = int(round(origin[0]))
+    y = int(round(origin[1]))
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale = 0.6
+    thickness = 2
+    (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
+    pad = 4
+    x = max(0, min(x, image.shape[1] - tw - pad * 2 - 1))
+    y = max(th + pad + 1, min(y, image.shape[0] - pad - 1))
+    cv2.rectangle(image, (x - pad, y - th - pad), (x + tw + pad, y + pad), (0, 0, 0), -1)
+    cv2.putText(image, text, (x, y), font, scale, color, thickness, cv2.LINE_AA)
+
+
+def _annotate_clavicle_t1_overlay(pred: np.ndarray, overlay: np.ndarray):
+    annotated = overlay.copy()
+    result = {}
+
+    clavicle_mask = (pred == 1).astype(np.uint8)
+    t1_mask = (pred == 2).astype(np.uint8)
+
+    if clavicle_mask.any():
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(clavicle_mask, connectivity=8)
+        components = []
+        for label_idx in range(1, num_labels):
+            area = int(stats[label_idx, cv2.CC_STAT_AREA])
+            if area < 20:
+                continue
+            ys, xs = np.where(labels == label_idx)
+            if len(xs) == 0:
+                continue
+            top_idx = int(np.argmin(ys))
+            top_point = (float(xs[top_idx]), float(ys[top_idx]))
+            components.append({"label": label_idx, "area": area, "top_point": top_point})
+
+        if len(components) >= 2:
+            components.sort(key=lambda item: item["top_point"][0])
+            left_point = components[0]["top_point"]
+            right_point = components[-1]["top_point"]
+        else:
+            ys, xs = np.where(clavicle_mask > 0)
+            if len(xs) >= 2:
+                mid_x = float(np.median(xs))
+                left_idx = np.where(xs <= mid_x)[0]
+                right_idx = np.where(xs > mid_x)[0]
+                if len(left_idx) == 0 or len(right_idx) == 0:
+                    left_idx = np.argsort(xs)[: max(1, len(xs) // 2)]
+                    right_idx = np.argsort(xs)[max(1, len(xs) // 2):]
+                if len(left_idx) > 0 and len(right_idx) > 0:
+                    left_candidates = np.column_stack([xs[left_idx], ys[left_idx]])
+                    right_candidates = np.column_stack([xs[right_idx], ys[right_idx]])
+                    left_point = tuple(map(float, left_candidates[np.argmin(left_candidates[:, 1])]))
+                    right_point = tuple(map(float, right_candidates[np.argmin(right_candidates[:, 1])]))
+                else:
+                    left_point = None
+                    right_point = None
+            else:
+                left_point = None
+                right_point = None
+
+        if left_point is not None and right_point is not None:
+            dx = float(right_point[0] - left_point[0])
+            dy = float(right_point[1] - left_point[1])
+            if abs(dx) > 1e-6 or abs(dy) > 1e-6:
+                clavicle_angle = math.degrees(math.atan2(dy, dx))
+                result["clavicle_topline_deg"] = round(float(clavicle_angle), 4)
+                result["clavicle_topline_abs_deg"] = round(abs(float(clavicle_angle)), 4)
+                result["clavicle_top_points"] = {
+                    "left": [round(float(left_point[0]), 2), round(float(left_point[1]), 2)],
+                    "right": [round(float(right_point[0]), 2), round(float(right_point[1]), 2)],
+                }
+                cv2.line(annotated, (int(round(left_point[0])), int(round(left_point[1]))), (int(round(right_point[0])), int(round(right_point[1]))), (0, 255, 255), 2, cv2.LINE_AA)
+                cv2.circle(annotated, (int(round(left_point[0])), int(round(left_point[1]))), 5, (0, 255, 255), -1, cv2.LINE_AA)
+                cv2.circle(annotated, (int(round(right_point[0])), int(round(right_point[1]))), 5, (0, 255, 255), -1, cv2.LINE_AA)
+                mid_x = (left_point[0] + right_point[0]) / 2.0
+                mid_y = (left_point[1] + right_point[1]) / 2.0
+                _draw_angle_label(annotated, f"Clavicle top line: {clavicle_angle:.1f}°", (mid_x + 10, mid_y - 10), (0, 255, 255))
+
+    if t1_mask.any():
+        ys, xs = np.where(t1_mask > 0)
+        t1_points = np.column_stack([xs, ys])
+        t1_line = _fit_line_angle_and_endpoints(t1_points, annotated.shape)
+        if t1_line is not None:
+            result["t1_tilt_deg"] = t1_line["angle_deg"]
+            result["t1_tilt_abs_deg"] = round(abs(float(t1_line["angle_deg"])), 4)
+            result["t1_line"] = t1_line
+            p1 = tuple(int(round(v)) for v in t1_line["point1"])
+            p2 = tuple(int(round(v)) for v in t1_line["point2"])
+            cv2.line(annotated, p1, p2, (255, 80, 80), 2, cv2.LINE_AA)
+            anchor = tuple(int(round(v)) for v in t1_line["anchor"])
+            cv2.circle(annotated, anchor, 4, (255, 80, 80), -1, cv2.LINE_AA)
+            _draw_angle_label(annotated, f"T1 tilt: {t1_line['angle_deg']:.1f}°", (anchor[0] + 10, anchor[1] + 10), (255, 80, 80))
+
+    return result, annotated
+
+
 class _UNetConvBlock(torch.nn.Module):
     def __init__(self, c_in: int, c_out: int):
         super().__init__()
@@ -468,7 +653,8 @@ def _infer_clavicle_t1_seg(model_path: str, img: np.ndarray):
     colors = np.array([[0, 0, 0], [0, 255, 255], [255, 80, 80]], dtype=np.uint8)
     color_mask = colors[np.clip(pred, 0, 2)]
     overlay = cv2.addWeighted(img, 0.65, color_mask, 0.35, 0.0)
-    return pred, overlay
+    annotation, annotated_overlay = _annotate_clavicle_t1_overlay(pred, overlay)
+    return pred, annotated_overlay, annotation
 
 
 class _HRNetW32MSSeg(torch.nn.Module):
@@ -565,7 +751,7 @@ def _infer_with_custom_model(model_name: str, model_path: str, img: np.ndarray, 
 
     # clavicle/T1 training script saves UNetSeg state_dict checkpoint, not Ultralytics YOLO checkpoint.
     if ext == ".pt" and model_name in {"clavicle", "t1"}:
-        pred_mask, overlay = _infer_clavicle_t1_seg(model_path, img)
+        pred_mask, overlay, annotation = _infer_clavicle_t1_seg(model_path, img)
         payload.update(
             {
                 "image_base64": _encode_image_b64(overlay),
@@ -574,6 +760,8 @@ def _infer_with_custom_model(model_name: str, model_path: str, img: np.ndarray, 
                 "classes": ["background", "clavicle", "T1"],
             }
         )
+        if annotation:
+            payload.update(annotation)
         return payload
 
     if ext in {".pt", ".onnx"} and YOLO is not None:
@@ -612,47 +800,32 @@ def _infer_with_custom_model(model_name: str, model_path: str, img: np.ndarray, 
             }
         )
         if model_name == "pelvis":
-            tilt = _compute_pelvic_tilt(points)
-            if tilt:
-                payload.update(tilt)
+            topline = _compute_pelvis_topline(points)
+            if topline:
+                payload.update(topline)
+                _, annotated_plot = _annotate_pelvis_overlay(points, plot_img)
+                payload["image_base64"] = _encode_image_b64(annotated_plot)
         return payload
 
     if ext == ".pth":
         pred_mask, overlay = _infer_segmentation(model_path, img)
-        # Report per-class pixel stats for debugging model confusion
-        unique_classes = sorted(int(c) for c in np.unique(pred_mask))
-        class_pixels = {int(c): int(np.sum(pred_mask == c)) for c in unique_classes}
+        topline_annotation = {}
+        annotated_overlay = overlay
         payload.update(
             {
                 "image_base64": _encode_image_b64(overlay),
                 "image_mimetype": "image/png",
                 "mask_shape": [int(pred_mask.shape[0]), int(pred_mask.shape[1])],
-                "detected_classes": unique_classes,
-                "class_pixels": class_pixels,
             }
         )
         if model_name == "pelvis":
             ys, xs = np.where(pred_mask > 0)
             if len(xs) > 20:
-                midx = float(np.mean(xs))
-                left_idx = np.where(xs < midx)[0]
-                right_idx = np.where(xs >= midx)[0]
-                points = []
-                for idxs in (left_idx, right_idx):
-                    if len(idxs) == 0:
-                        continue
-                    xg = xs[idxs]
-                    yg = ys[idxs]
-                    y_min = float(np.min(yg))
-                    top = np.where(yg <= y_min + 6)[0]
-                    if len(top) == 0:
-                        continue
-                    px = float(np.mean(xg[top]))
-                    py = float(np.mean(yg[top]))
-                    points.append((px, py))
-                tilt = _compute_pelvic_tilt(points)
-                if tilt:
-                    payload.update(tilt)
+                points = list(zip(xs.astype(float).tolist(), ys.astype(float).tolist()))
+                topline_annotation, annotated_overlay = _annotate_pelvis_overlay(points, overlay)
+                if topline_annotation:
+                    payload.update(topline_annotation)
+                    payload["image_base64"] = _encode_image_b64(annotated_overlay)
         return payload
 
     raise RuntimeError(f"Unsupported model format: {ext}. Supported: .pt/.onnx/.pth")
@@ -798,6 +971,11 @@ def classify_xray_view():
         img = _decode_image_b64(b64)
         predictor = _get_xray_view_classifier()
         result = predictor.predict_array(img)
+
+        print(
+            f"[XRAY_VIEW][remoteInferer] class_id={result.get('class_id')} "
+            f"class_name={result.get('class_name')} confidence={result.get('confidence')}"
+        )
         
         payload = {
             "status": "ok",
@@ -806,6 +984,7 @@ def classify_xray_view():
             "confidence": result["confidence"],
             "probs": result["probs"]
         }
+        print(f"[XRAY_VIEW][remoteInferer] response={json.dumps(payload, ensure_ascii=False, default=str)}")
         return jsonify(payload), 200
     except Exception as exc:
         print("[ERROR] /classify/xray_view failed")
@@ -861,9 +1040,9 @@ def _infer_extra_model_by_name(model_name: str):
         return jsonify({"status": "error", "message": "image_base64 missing"}), 400
 
     try:
-        conf = float(data.get("conf", 0.25))
+        conf = float(data.get("conf", 0.15))
     except Exception:
-        conf = 0.25
+        conf = 0.15
     default_file_map = {
         "clavicle": "锁骨_T1识别.pt",
         "t1": "锁骨_T1识别.pt",

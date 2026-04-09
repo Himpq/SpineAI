@@ -1,0 +1,46 @@
+<!-- View: Thyroid -->
+<div id="page-thyroid" class="page-view">
+    <div class="dashboard-grid" style="grid-template-columns:320px 1fr; gap:20px;">
+        
+        <div class="card" style="display:flex; flex-direction:column; gap:12px;">
+            <div class="card-header">
+                <span>甲状腺结节 Demo</span>
+            </div>
+            <p style="font-size:13px; color:#64748b; line-height:1.6; margin:0;">
+                支持上传单张超声图，选择模型并发起推理。
+            </p>
+            <label style="font-size:12px; color:#475569; font-weight:600;">选择模型</label>
+            <select id="thyroid-model" class="input" style="padding:10px; border:1px solid #e2e8f0; border-radius:8px;">
+                <option value="swin-unet">swin-unet</option>
+                <option value="unet">unet</option>
+                <option value="deeplabv3+">deeplabv3+</option>
+                <option value="segformer-b1">segformer-b1</option>
+            </select>
+            <div style="border:1px dashed #cbd5e1; border-radius:10px; padding:14px; text-align:center;">
+                <input type="file" id="thyroid-file" accept="image/*" style="display:none;">
+                <button id="thyroid-upload-btn" style="width:100%; padding:10px; border:1px solid #e2e8f0; background:#f8fafc; border-radius:8px; cursor:pointer;">选择或拖入超声图</button>
+                <p style="font-size:12px; color:#94a3b8; margin-top:6px;">支持 PNG / JPG，单张上传</p>
+                <button id="thyroid-example-btn" style="margin-top:8px; width:100%; padding:8px; border:1px dashed #94a3b8; background:#fff; color:#475569; border-radius:8px; cursor:pointer;">使用示例图</button>
+                <div style="margin-top:12px;">
+                    <img id="thyroid-preview" src="" style="max-width:100%; max-height:180px; display:none; border-radius:8px; border:1px solid #e2e8f0;">
+                </div>
+            </div>
+            <button id="thyroid-run-btn" style="padding:12px; background:#2563eb; color:#fff; border:none; border-radius:10px; cursor:pointer;">开始预测</button>
+        </div>
+
+        <div class="card" style="min-height:420px; display:flex; flex-direction:column; gap:12px;">
+            <div class="card-header">
+                <span>预测结果</span>
+            </div>
+            <div style="flex:1; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;">
+                <div id="thyroid-placeholder" style="text-align:center; color:#94a3b8; display:flex; flex-direction:column; align-items:center; gap:10px;">
+                    <div style="font-size:40px;">🩺</div>
+                    <div id="thyroid-status-bar" style="padding:10px 16px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; color:#475569; font-weight:600; box-shadow:0 2px 6px rgba(15,23,42,0.06);">等待预测结果...</div>
+                </div>
+                <img id="thyroid-result-img" src="" style="max-width:100%; max-height:520px; display:none; border-radius:10px; object-fit:contain;">
+            </div>
+            <div id="thyroid-meta" style="font-size:12px; color:#64748b;"></div>
+        </div>
+
+    </div>
+</div>

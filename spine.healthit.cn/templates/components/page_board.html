@@ -1,0 +1,52 @@
+<!-- View: Board (Project Updates) -->
+<div id="page-board" class="page-view">
+    
+    <div class="about-content">
+        <div class="about-section">
+            <h3>更新 HealthIT-AI脊柱辅助诊断系统 V1.1</h3>
+            <p>- 2026 / 2 / 14   3:13</p>
+            <div style="text-indent: 2em;line-height: 30px;">
+                <p style='color: black'>添加颈部X光识别，通过椎管与椎骨的量化标准评判颈椎的健康度。</p>
+                <div style='text-align: center'>
+                    <img style='height: 300px;' src='./static/img/jz.png' />
+                </div>
+                <p style='font-size: 12px; text-align:center'>颈椎椎管 精确标记例</p>
+            </div>
+        </div>
+    </div>
+    
+    
+    <div class="about-content">
+        <div class="about-section">
+            <h3>更新 HealthIT-AI脊柱辅助诊断系统 V1.0</h3>
+            <p>- 2026 / 1 / 24   3:13</p>
+            <div style="text-indent: 2em;line-height: 30px;">
+                <p style='color: black'>将传统通过<strong>点标记</strong>训练的 UNet 峰值 22 通道分类模型 + UNet ROI 窗口粗分割模型 替换为对线性顺序和先验顺序更精确的 HRNet 模型，识别率提高并且对于复杂情况的识别能力大幅提升。</p>
+                
+                <p style='color: black'>将 UNet 训练的髂脊线识别模型（UNet 只适合进行分割，对于线段识别定位预测为概率热图，并不方便进行线段化）替换为 VGG16-BN 专注于线段提取。</p>
+                <div style='text-align: center'>
+                    <img style='height: 300px;' src='./static/img/compressed/HRNet_sample.png' />
+                    <img style='height: 300px;' src='./static/img/compressed/8_line.png' />
+                </div>
+                <p style='font-size: 12px; text-align:center'>椎骨 / 髂骨 精确标记例</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="about-content">
+        <div class="about-section">
+            <h3>更新 HealthIT-AI脊柱辅助诊断系统 Beta - L4/L5 Locator 模型</h3>
+            <p>- 2026 / 1 / 23   12:00</p>
+            <div style="text-indent: 2em;line-height: 30px;">
+                <p style='color: black'>因为 UNet 本身并不具备学习线性关系、先验关系的能力，只能在训练阶段通过 Loss 约束各个通道的信息，但是更易使得模型只学习到椎骨的图谱相对位置，并不适合做定位。</p>
+                
+                <p style='color: black'>将 UNet 22通道 版本替换为 UNet ROI 椎骨粗分割模型 + UNet 22通道分类版本，让 ROI 粗分割窗口做先验识别，准确度相比于传统 22通道 UNet 提高约 31% .</p>
+                
+                <img style='width: 100%' src='./static/img/compressed/ROI_sample.png' />
+                <p style='font-size: 12px; text-align:center'>ROI 粗分割例</p>
+                <img style='width: 100%' src='./static/img/compressed/UNet_sample.png' />
+                <p style='font-size: 12px; text-align:center'>UNet 精确标记例</p>
+            </div>
+        </div>
+    </div>
+</div>

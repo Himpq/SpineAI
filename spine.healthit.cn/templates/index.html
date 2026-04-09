@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dicom3d.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/three@0.113.0/build/three.min.js"></script>
+    <script src="{{ url_for('static', filename='js/ami.js') }}?v=0.113"></script>
+{% endblock %}
+
+{% block content %}
+    <!-- Include all page components -->
+    {% include "components/page_inference.html" %}
+    {% include "components/page_thyroid.html" %}
+    {% include "components/page_dicom3d.html" %}
+    {% include "components/page_about.html" %}
+    {% include "components/page_team.html" %}
+    {% include "components/page_status.html" %}
+    {% include "components/page_board.html" %}
+
+    <!-- Include modal components -->
+    {% include "components/modal_example.html" %}
+{% endblock %}
+
+{% block extra_scripts %}
+    <script src="{{ url_for('static', filename='js/dicom3d.js') }}"></script>
+{% endblock %}
