@@ -41,3 +41,6 @@ node_modules/
 *.zip
 *.tar.gz
 frpc*
+
+prompt.txt
+Spine_FUPT/static/uploads

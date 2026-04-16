@@ -681,6 +681,8 @@ def serialize_patient_row(patient, unread_map):
     status = "follow_up"
     if latest_exam and latest_exam.status == "pending_review":
         status = "pending_review"
+    elif latest_exam and latest_exam.status == "inferring":
+        status = "inferring"
     elif unread_map.get(patient.id, 0) > 0:
         status = "has_message"
 
@@ -692,7 +694,7 @@ def serialize_patient_row(patient, unread_map):
         "phone": patient.phone,
         "email": patient.email,
         "status": status,
-        "status_text": {"follow_up": "随访中", "pending_review": "待复核", "has_message": "有消息"}[status],
+        "status_text": {"follow_up": "随访中", "pending_review": "待复核", "inferring": "推理中", "has_message": "有消息"}[status],
         "unread_count": unread_map.get(patient.id, 0),
         "exam_count": Exam.query.filter_by(patient_id=patient.id).count(),
         "last_exam_date": iso(latest_exam.created_at if latest_exam else None),
@@ -1793,8 +1795,8 @@ def run_remote_inference(exam):
             metric_text = f"，平均左/右比 {float(cervical_metric['avg_ratio']):.3f}"
         create_work_event(
             "inference_result",
-            "推理完成",
-            f"推理结果为 {spine_class_text(class_name)}，置信度为 {confidence_text}{metric_text}",
+            "推理完成，已进入复核",
+            f"推理结果为 {spine_class_text(class_name)}，置信度为 {confidence_text}{metric_text}，已加入 {review_owner_name(exam)} 的复核队列",
             level="info",
             patient_id=exam.patient_id,
             exam_id=exam.id,
@@ -2846,7 +2848,7 @@ def api_exam_upload_doctor(patient_id):
         uploaded_by_user_id=g.current_user.id,
         uploaded_by_label=g.current_user.display_name,
         review_owner_user_id=g.current_user.id,
-        status="pending_review",
+        status="inferring",
     )
     db.session.add(exam)
     db.session.commit()
@@ -2855,15 +2857,14 @@ def api_exam_upload_doctor(patient_id):
     pic_name = Path(exam.image_path).name if exam.image_path else "影像"
     owner_name = review_owner_name(exam)
     create_work_event(
-        "review_queue_add",
-        "影像进入复核队列",
-        f"{g.current_user.display_name} 上传的 {pic_name} 已加入 {owner_name} 的复核队列",
+        "xray_upload",
+        "新影像已上传",
+        f"{patient_display_name(patient)} 上传了新的X光，AI 正在分析",
         patient_id=patient.id,
         exam_id=exam.id,
-        level="warn",
-        ref={"exam_id": exam.id, "pic_name": pic_name, "owner_name": owner_name, "uploader_name": g.current_user.display_name},
+        level="info",
+        ref={"exam_id": exam.id, "patient_id": patient.id, "pic_name": pic_name, "owner_name": owner_name},
     )
-    create_work_event("xray_upload", "新影像待复核", f"{patient_display_name(patient)} 上传了新的X光", patient_id=patient.id, exam_id=exam.id, level="warn", ref={"exam_id": exam.id, "pic_name": pic_name, "owner_name": owner_name})
 
     return api_ok({"exam": serialize_exam_row(exam)}, message="影像已上传")
 
@@ -2883,7 +2884,9 @@ def api_reviews():
         query = query.join(Patient, Patient.id == Exam.patient_id).filter(
             or_(Exam.review_owner_user_id == g.current_user.id, and_(Exam.review_owner_user_id.is_(None), Patient.created_by_user_id == g.current_user.id))
         )
-    if status != "all":
+    if status == "all":
+        query = query.filter(Exam.status != "inferring")
+    else:
         query = query.filter(Exam.status == status)
     total = query.count()
     items = query.order_by(Exam.created_at.desc(), Exam.id.desc()).offset((page - 1) * per_page).limit(per_page).all()
@@ -4162,7 +4165,7 @@ def api_public_portal_exam(token):
         uploaded_by_kind="patient",
         uploaded_by_label=(request.form.get("sender_name") or patient_display_name(patient)).strip() or patient_display_name(patient),
         review_owner_user_id=patient.created_by_user_id,
-        status="pending_review",
+        status="inferring",
     )
     db.session.add(exam)
     db.session.commit()
@@ -4172,22 +4175,13 @@ def api_public_portal_exam(token):
     owner_name = review_owner_name(exam)
     uploader_name = exam.uploaded_by_label or patient_display_name(patient)
     create_work_event(
-        "review_queue_add",
-        "影像进入复核队列",
-        f"{uploader_name} 上传的 {pic_name} 已加入 {owner_name} 的复核队列",
-        patient_id=patient.id,
-        exam_id=exam.id,
-        level="warn",
-        ref={"exam_id": exam.id, "pic_name": pic_name, "owner_name": owner_name, "uploader_name": uploader_name},
-    )
-    create_work_event(
         "xray_upload",
         "患者上传新影像",
-        f"{patient_display_name(patient)} 上传了新的X光待复核",
+        f"{patient_display_name(patient)} 上传了新的X光，AI 正在分析",
         patient_id=patient.id,
         exam_id=exam.id,
-        level="warn",
-        ref={"exam_id": exam.id, "pic_name": pic_name, "owner_name": owner_name},
+        level="info",
+        ref={"exam_id": exam.id, "patient_id": patient.id, "pic_name": pic_name, "owner_name": owner_name, "uploader_name": uploader_name},
     )
     return api_ok({"exam": serialize_exam_row(exam)}, message="上传成功")
 

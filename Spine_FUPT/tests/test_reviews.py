@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Tests for review API endpoints."""
+import io
+
 from unittest.mock import patch
 
 
@@ -49,6 +51,29 @@ class TestReviewList:
         data = resp.get_json()["data"]
         assert len(data["items"]) == 2
         assert data["has_more"] is True
+
+    def test_all_excludes_inferring(self, auth_client, sample_patient, db_session):
+        _create_exam(db_session, sample_patient["id"], status="inferring")
+        ready_exam = _create_exam(db_session, sample_patient["id"], status="pending_review")
+        resp = auth_client.get("/api/reviews?status=all")
+        data = resp.get_json()["data"]
+        item_ids = [item["id"] for item in data["items"]]
+        assert ready_exam.id in item_ids
+        assert len(data["items"]) == 1
+
+
+class TestReviewUploadFlow:
+    """Upload should stay hidden from review queue until inference finishes."""
+
+    def test_doctor_upload_starts_as_inferring(self, auth_client, sample_patient):
+        resp = auth_client.post(
+            f"/api/patients/{sample_patient['id']}/exams",
+            data={"file": (io.BytesIO(b"fake-image"), "test.png")},
+            content_type="multipart/form-data",
+        )
+        data = resp.get_json()
+        assert resp.status_code == 200
+        assert data["data"]["exam"]["status"] == "inferring"
 
 
 class TestReviewDetail:
