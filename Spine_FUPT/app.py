@@ -22,6 +22,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from settings import get_value
+
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "static" / "uploads"
 DB_PATH = BASE_DIR / "spine_workbench.db"
@@ -30,19 +32,22 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.config.update(
-    SECRET_KEY=os.getenv("FLASK_SECRET_KEY", "spine-workbench-secret-change-me"),
+    APP_HOST=get_value("APP_HOST", "0.0.0.0"),
+    APP_PORT=int(get_value("APP_PORT", 19191)),
+    APP_DEBUG=bool(get_value("APP_DEBUG", True)),
+    SECRET_KEY=get_value("SECRET_KEY", "spine-workbench-secret-change-me"),
     SQLALCHEMY_DATABASE_URI=f"sqlite:///{DB_PATH.as_posix()}",
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
     MAX_CONTENT_LENGTH=64 * 1024 * 1024,
-    REMOTE_INFER_BASE=os.getenv("SPINE_REMOTE_INFER_BASE", os.getenv("SPINE_REMOTE_INFER_URL", "http://spine.healthit.cn:15443")),
-    REMOTE_INFER_TIMEOUT=int(os.getenv("SPINE_REMOTE_TIMEOUT", "60")),
-    ALERT_COBB=float(os.getenv("SPINE_ALERT_COBB", "45")),
+    REMOTE_INFER_BASE=get_value("REMOTE_INFER_BASE", "http://spine.healthit.cn:15443"),
+    REMOTE_INFER_TIMEOUT=int(get_value("REMOTE_INFER_TIMEOUT", 60)),
+    ALERT_COBB=float(get_value("ALERT_COBB", 45)),
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
-    STEPFUN_API_BASE=os.getenv("STEPFUN_API_BASE", "https://api.stepfun.com/v1"),
-    STEPFUN_API_KEY=os.getenv("STEPFUN_API_KEY", ""),
-    STEPFUN_MODEL=os.getenv("STEPFUN_MODEL", "step-1-8k"),
-    ANON_INFER_LIMIT=int(os.getenv("SPINE_ANON_INFER_LIMIT", "3")),
-    ANON_INFER_WINDOW=int(os.getenv("SPINE_ANON_INFER_WINDOW", "3600")),
+    STEPFUN_API_BASE=get_value("STEPFUN_API_BASE", "https://api.stepfun.com/v1"),
+    STEPFUN_API_KEY=get_value("STEPFUN_API_KEY", ""),
+    STEPFUN_MODEL=get_value("STEPFUN_MODEL", "step-1-8k"),
+    ANON_INFER_LIMIT=int(get_value("ANON_INFER_LIMIT", 3)),
+    ANON_INFER_WINDOW=int(get_value("ANON_INFER_WINDOW", 3600)),
 )
 
 db = SQLAlchemy(app)
@@ -2040,13 +2045,13 @@ def bootstrap_admin():
     if User.query.count() > 0:
         return
     user = User(
-        username=os.getenv("SPINE_ADMIN_USER", "admin"),
+        username=app.config.get("ADMIN_USER", "admin"),
         display_name="系统管理员",
         role="admin",
         is_active=True,
         module_permissions=json_dumps(DEFAULT_MODULES),
     )
-    user.set_password(os.getenv("SPINE_ADMIN_PASSWORD", "admin123"))
+    user.set_password(app.config.get("ADMIN_PASSWORD", "admin123"))
     db.session.add(user)
     db.session.commit()
 
@@ -4756,4 +4761,9 @@ with app.app_context():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=19191, debug=True)
+    app.run(
+        host=str(app.config.get("APP_HOST", "0.0.0.0")),
+        port=int(app.config.get("APP_PORT", 19191)),
+        debug=bool(app.config.get("APP_DEBUG", True)),
+        extra_files=[str(BASE_DIR / "config.json")],
+    )

@@ -23,12 +23,14 @@ import zlib
 import gzip
 import importlib
 
+from settings import get_path
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ROOT = os.path.dirname(os.path.abspath(__file__))
-HRNET_WEIGHTS = os.path.join(ROOT, "weights", "hrnet_w32ms.pth")
-HED_WEIGHTS   = os.path.join(ROOT, "weights", "hedline.pth")
-OPLL_WEIGHTS  = os.path.join(ROOT, "weights", "opll.pth")
-THYROID_ROOT  = os.path.abspath(os.path.join(ROOT, "..", "Thyroid"))
+HRNET_WEIGHTS = get_path("detect_v3_hrnet_weights")
+HED_WEIGHTS   = get_path("detect_v3_hed_weights")
+OPLL_WEIGHTS  = get_path("detect_v3_opll_weights")
+THYROID_ROOT  = get_path("detect_v3_thyroid_root")
 
 
 def _tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:

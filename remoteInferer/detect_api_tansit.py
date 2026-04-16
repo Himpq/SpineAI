@@ -14,8 +14,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from settings import get_path
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
-TANSIT_WEIGHTS = os.path.join(ROOT, "weights", "tansit.pth")
+TANSIT_WEIGHTS = get_path("tansit_weights")
 
 IMAGE_SIZE = 512
 HEATMAP_SIZE = 256

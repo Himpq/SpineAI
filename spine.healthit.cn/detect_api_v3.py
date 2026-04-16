@@ -19,12 +19,14 @@ import pickle
 import types
 import sys
 
+from settings import DEFAULT_CONFIG, get_path
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-ROOT = os.path.dirname(os.path.abspath(__file__))
-HRNET_WEIGHTS = os.path.join(ROOT, "weights", "hrnet_w32ms.pth")
-HED_WEIGHTS   = os.path.join(ROOT, "weights", "hedline.pth")
-OPLL_WEIGHTS  = os.path.join(ROOT, "weights", "opll.pth")
-THYROID_ROOT  = os.path.abspath(os.path.join(ROOT, "..", "Thyroid"))
+ROOT = pathlib.Path(__file__).resolve().parent
+HRNET_WEIGHTS = get_path("detect_api_v3", "hrnet_weights", default=DEFAULT_CONFIG["detect_api_v3"]["hrnet_weights"])
+HED_WEIGHTS   = get_path("detect_api_v3", "hed_weights", default=DEFAULT_CONFIG["detect_api_v3"]["hed_weights"])
+OPLL_WEIGHTS  = get_path("detect_api_v3", "opll_weights", default=DEFAULT_CONFIG["detect_api_v3"]["opll_weights"])
+THYROID_ROOT  = get_path("paths", "thyroid_root", default=DEFAULT_CONFIG["paths"]["thyroid_root"])
 
 # ------------------------------------------------------------
 # Thyroid Segmentation (imports from Thyroid project)

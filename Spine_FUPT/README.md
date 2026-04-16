@@ -20,29 +20,6 @@
 - `状态`：远程推理服务与系统状态
 - `用户与权限`：管理员账号管理
 
-## 患者/共享入口
-
-- 患者登记：`/register/<register_token>`
-- 患者查看随访：`/patient/<access_key>`
-- 同事共享阅片：`/shared/<share_token>`
-
-## 关键 API（新增）
-
-- `GET /api/status`
-- `POST /api/patients/<id>/portal-link`
-- `PATCH /api/patients/<id>`
-- `GET|POST /api/tasks`
-- `PATCH|DELETE /api/tasks/<id>`
-- `DELETE /api/exams/<id>`
-- `POST /api/exams/<id>/manual-result`
-- `GET|POST /api/exams/<id>/annotations`
-- `PATCH|DELETE /api/annotations/<id>`
-- `POST /api/exams/<id>/share`
-- `GET /api/shared/exams/<token>`
-- `GET|POST /api/public/register/<token>`
-- `GET /api/public/patient/<access_key>`
-- `POST /api/public/patient/<access_key>/exams`
-
 ## 运行
 
 ```powershell
@@ -50,19 +27,16 @@ pip install -r requirements.txt
 python app.py
 ```
 
-访问：`http://127.0.0.1:5000`
+访问地址由 [config.json](config.json) 里的 `APP_HOST` / `APP_PORT` 决定。
 
-默认账号：
+默认账号来自 [config.json](config.json)：
 
 - `admin / admin123`
 - `doctor1 / doctor123`
 
-## 环境变量
+## 配置
 
-- `SPINE_REMOTE_INFER_URL`：远程推理服务地址
-- `SPINE_REMOTE_TIMEOUT`：推理超时（秒）
-- `SPINE_LOW_CONF`：低置信度阈值
-- `SPINE_IMPROVE_DELTA`：改善阈值（Cobb 角）
-- `SPINE_WORSEN_DELTA`：恶化阈值（Cobb 角）
-- `SPINE_COBB_ALERT`：高风险 Cobb 提示阈值
+- 运行配置放在 [config.json](config.json)，不再从环境变量读取这些参数。
+- 远程推理地址、超时、StepFun 配置、匿名推理限制、管理员账号都可以直接在 JSON 里改。
+- 如果你要迁移到新机器，先改 [config.json](config.json)，再启动 `app.py`。
 

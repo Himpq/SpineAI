@@ -9,6 +9,9 @@ from flask import Flask, render_template, jsonify, url_for, request, Response, s
 from flask_sock import Sock
 from urllib.parse import urlparse
 import websocket
+
+from settings import DEFAULT_CONFIG, get_bool, get_float, get_int, get_path, get_value
+
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 # Import our new standalone detect api v3
 try:
@@ -19,7 +22,9 @@ except ImportError as e:
 
 try:
     from openai import OpenAI
-    client = OpenAI(api_key=os.environ.get("STEPFUN_API_KEY", ""), base_url="https://api.stepfun.com/v1")
+    stepfun_api_key_env = get_value("ai", "stepfun_api_key_env", default=DEFAULT_CONFIG["ai"]["stepfun_api_key_env"])
+    stepfun_api_base_url = get_value("ai", "stepfun_api_base_url", default=DEFAULT_CONFIG["ai"]["stepfun_api_base_url"])
+    client = OpenAI(api_key=os.environ.get(stepfun_api_key_env, ""), base_url=stepfun_api_base_url)
 except ImportError as e:
     print(f"Warning: OpenAI client import failed: {e}")
     client = None
@@ -27,11 +32,34 @@ except ImportError as e:
 app = Flask(__name__, static_folder='static', template_folder='templates')
 sock = Sock(app)
 
-REMOTE_INFER_URL = "http://127.0.0.1:15443"
-REMOTE_TIMEOUT = 120
-FUPT_PROXY_URL = os.getenv("SPINE_FUPT_PROXY_URL", "http://127.0.0.1:19191")
-FUPT_PROXY_TIMEOUT = int(os.getenv("SPINE_FUPT_PROXY_TIMEOUT", "120"))
-DEMO_DICOM_PATH = os.path.join(app.static_folder, 'demo', 'dicom3d', 'spine_vertebrae_float32.nii.gz')
+REMOTE_INFER_URL = str(get_value("app", "remote_infer_url", default=DEFAULT_CONFIG["app"]["remote_infer_url"]) or "")
+REMOTE_TIMEOUT = get_int("app", "remote_timeout", default=DEFAULT_CONFIG["app"]["remote_timeout"])
+FUPT_PROXY_URL = str(get_value("app", "fupt_proxy_url", default=DEFAULT_CONFIG["app"]["fupt_proxy_url"]) or "")
+FUPT_PROXY_TIMEOUT = get_int("app", "fupt_proxy_timeout", default=DEFAULT_CONFIG["app"]["fupt_proxy_timeout"])
+APP_HOST = str(get_value("app", "host", default=DEFAULT_CONFIG["app"]["host"]) or DEFAULT_CONFIG["app"]["host"])
+APP_PORT = get_int("app", "port", default=DEFAULT_CONFIG["app"]["port"])
+APP_DEBUG = get_bool("app", "debug", default=DEFAULT_CONFIG["app"]["debug"])
+DEFAULT_L4L5_CONF = get_float("app", "default_l4l5_conf", default=DEFAULT_CONFIG["app"]["default_l4l5_conf"])
+DEFAULT_EXTRA_CONF = get_float("app", "default_extra_conf", default=DEFAULT_CONFIG["app"]["default_extra_conf"])
+DEFAULT_THYROID_THRESHOLD = get_float("app", "default_thyroid_threshold", default=DEFAULT_CONFIG["app"]["default_thyroid_threshold"])
+WEIGHTS_DIR = get_path("paths", "weights_dir", default=DEFAULT_CONFIG["paths"]["weights_dir"])
+DEMO_DICOM_PATH = get_path(
+    "app",
+    "demo_dicom_path",
+    default=DEFAULT_CONFIG["app"]["demo_dicom_path"],
+)
+REMOTE_INFER_PATHS = get_value("remote_infer", "infer_paths", default={}) or {}
+EXTRA_MODEL_WEIGHT_FILES = get_value("remote_infer", "extra_model_weight_files", default={}) or {}
+REMOTE_ROUTE_OPLL = REMOTE_INFER_PATHS.get("opll", DEFAULT_CONFIG["remote_infer"]["infer_paths"]["opll"])
+REMOTE_ROUTE_L4L5 = REMOTE_INFER_PATHS.get("l4l5", DEFAULT_CONFIG["remote_infer"]["infer_paths"]["l4l5"])
+REMOTE_ROUTE_CLAVICLE = REMOTE_INFER_PATHS.get("clavicle", DEFAULT_CONFIG["remote_infer"]["infer_paths"]["clavicle"])
+REMOTE_ROUTE_T1 = REMOTE_INFER_PATHS.get("t1", DEFAULT_CONFIG["remote_infer"]["infer_paths"]["t1"])
+REMOTE_ROUTE_PELVIS = REMOTE_INFER_PATHS.get("pelvis", DEFAULT_CONFIG["remote_infer"]["infer_paths"]["pelvis"])
+REMOTE_ROUTE_CERVICAL = REMOTE_INFER_PATHS.get("cervical", DEFAULT_CONFIG["remote_infer"]["infer_paths"]["cervical"])
+REMOTE_ROUTE_THYROID = REMOTE_INFER_PATHS.get("thyroid", DEFAULT_CONFIG["remote_infer"]["infer_paths"]["thyroid"])
+REMOTE_ROUTE_METRICS = REMOTE_INFER_PATHS.get("metrics", DEFAULT_CONFIG["remote_infer"]["infer_paths"]["metrics"])
+REMOTE_ROUTE_DICOM3D = REMOTE_INFER_PATHS.get("dicom3d_example", DEFAULT_CONFIG["remote_infer"]["infer_paths"]["dicom3d_example"])
+ANALYSIS_MODEL_NAME = str(get_value("ai", "analysis_model", default=DEFAULT_CONFIG["ai"]["analysis_model"]) or DEFAULT_CONFIG["ai"]["analysis_model"])
 
 def _encode_b64(img_bgr):
     ok, buffer = cv2.imencode('.png', img_bgr)
@@ -339,7 +367,7 @@ def api_opll():
     try:
         if REMOTE_INFER_URL:
             payload = {'image_base64': _encode_b64(img)}
-            remote_res = _remote_post('/infer/opll', payload)
+            remote_res = _remote_post(REMOTE_ROUTE_OPLL, payload)
             return jsonify(remote_res), 200
         from detect_api_v3 import run_opll_pipeline
         res = run_opll_pipeline(img, return_debug_image=True)
@@ -364,9 +392,9 @@ def api_l4l5locator():
 
     # Get Confidence Threshold
     try:
-        conf_thr = float(request.form.get('conf', 0.3))
+        conf_thr = float(request.form.get('conf', DEFAULT_L4L5_CONF))
     except ValueError:
-        conf_thr = 0.3
+        conf_thr = DEFAULT_L4L5_CONF
 
     img = None
     
@@ -412,7 +440,7 @@ def api_l4l5locator():
     try:
         if REMOTE_INFER_URL:
             payload = {'image_base64': _encode_b64(img), 'conf': conf_thr}
-            remote_res = _remote_post('/infer/l4l5', payload)
+            remote_res = _remote_post(REMOTE_ROUTE_L4L5, payload)
             return jsonify(remote_res), 200
         # Run inference (v3 pipeline)
         res = run_pipeline(img, return_debug_image=True)
@@ -448,11 +476,11 @@ def api_extra_model_infer():
     """Generic demo endpoint for clavicle / T1 / pelvis (remote forward)."""
     model_name = (request.form.get('model_name') or '').strip().lower()
     path_map = {
-        'clavicle': '/infer/clavicle',
-        't1': '/infer/t1',
-        'pelvis': '/infer/pelvis',
-        'sacrum': '/infer/pelvis',
-        'cervical': '/infer/tansit',
+        'clavicle': REMOTE_ROUTE_CLAVICLE,
+        't1': REMOTE_ROUTE_T1,
+        'pelvis': REMOTE_ROUTE_PELVIS,
+        'sacrum': REMOTE_ROUTE_PELVIS,
+        'cervical': REMOTE_ROUTE_CERVICAL,
     }
     infer_path = path_map.get(model_name)
     if not infer_path:
@@ -494,21 +522,14 @@ def api_extra_model_infer():
             return jsonify({'status': 'error', 'message': f"Image read error: {e}"}), 400
 
     try:
-        weight_file_map = {
-            'clavicle': '锁骨_T1识别.pt',
-            't1': '锁骨_T1识别.pt',
-            'pelvis': '盆骨锁骨分割模型_hrnetw32ms.pth',
-            'sacrum': '盆骨锁骨分割模型_hrnetw32ms.pth',
-            'cervical': 'cervical',
-        }
-        weight_file = weight_file_map.get(model_name, model_name)
-        model_weight_path = f'./weights/{weight_file}'
+        weight_file = EXTRA_MODEL_WEIGHT_FILES.get(model_name, model_name)
+        model_weight_path = os.path.join(WEIGHTS_DIR, weight_file)
         payload = {
             'image_base64': _encode_b64(img),
             'model_name': model_name,
             'model_path': model_weight_path,
             'weights_path': model_weight_path,
-            'conf': float(request.form.get('conf', 0.25)),
+            'conf': float(request.form.get('conf', DEFAULT_EXTRA_CONF)),
         }
         if REMOTE_INFER_URL:
             remote_res = _remote_post(infer_path, payload)
@@ -534,10 +555,10 @@ def api_thyroid_infer():
         if not b64:
             return jsonify({'status': 'error', 'message': 'image_base64 missing'}), 400
         model_id = data.get('model_id', 'swin-unet')
-        threshold = data.get('threshold', 0.5)
+        threshold = data.get('threshold', DEFAULT_THYROID_THRESHOLD)
         if REMOTE_INFER_URL:
             payload = {'image_base64': b64, 'model_id': model_id, 'threshold': threshold}
-            remote_res = _remote_post('/infer/thyroid', payload)
+            remote_res = _remote_post(REMOTE_ROUTE_THYROID, payload)
             return jsonify(remote_res), 200
         else:
             return jsonify({'status': 'error', 'message': 'REMOTE_INFER_URL not set'}), 500
@@ -551,7 +572,7 @@ def api_remote_metrics():
     if not REMOTE_INFER_URL:
         return jsonify({'status': 'error', 'message': 'REMOTE_INFER_URL not set'}), 400
     try:
-        metrics = _remote_get('/metrics')
+        metrics = _remote_get(REMOTE_ROUTE_METRICS)
         return jsonify({'status': 'ok', 'metrics': metrics}), 200
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -562,7 +583,7 @@ def api_dicom3d_example():
     """提供 3D 脊柱可视化示例体数据（NIfTI.gz），优先走远程推理端。"""
     try:
         if REMOTE_INFER_URL:
-            data = _remote_get('/dicom3d/example')
+            data = _remote_get(REMOTE_ROUTE_DICOM3D)
             return jsonify(data), 200
         if not os.path.exists(DEMO_DICOM_PATH):
             return jsonify({'status': 'error', 'message': 'demo volume missing'}), 404
@@ -756,7 +777,7 @@ turn_deg_per_seg = curvature_deg / max(1, N-2)
         def generate():
             try:
                 completion = client.chat.completions.create(
-                    model="step-1-8k",
+                    model=ANALYSIS_MODEL_NAME,
                     messages=messages,
                     stream=True
                 )
@@ -775,4 +796,4 @@ turn_deg_per_seg = curvature_deg / max(1, N-2)
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host=APP_HOST, port=APP_PORT, debug=APP_DEBUG)

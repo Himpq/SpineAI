@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 from torchvision import models
 from torchvision.models import EfficientNet_B0_Weights
+from settings import get_path, get_value
 try:
     import albumentations as A
     from albumentations.pytorch import ToTensorV2
@@ -31,9 +32,13 @@ except ImportError:
 # =====================================================================
 #  配置
 # =====================================================================
-MODEL_PATH  = r"E:\spine\code\spine_classifier\output\best_model.pth"
-ONNX_PATH   = r"E:\spine\code\spine_classifier\output\spine_classifier.onnx"
-IMG_SIZE     = 224
+MODEL_PATH  = get_path("classify_model_path")
+ONNX_PATH   = get_path("classify_onnx_path")
+IMG_SIZE     = int(get_value("classify_img_size", default=224))
+CLASSIFIER_DROPOUT = float(get_value("classify_dropout", default=0.3))
+GRADIO_HOST = get_value("classify_gradio_host", default="0.0.0.0")
+GRADIO_PORT = int(get_value("classify_gradio_port", default=7860))
+GRADIO_SHARE = bool(get_value("classify_gradio_share", default=False))
 CLASS_NAMES  = ['颈椎 (Cervical)', '腰椎 (Lumbar)']
 DEVICE       = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -52,7 +57,7 @@ def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
 class SpineClassifier(nn.Module):
     """基于 EfficientNet-B0 的脊椎分类器"""
 
-    def __init__(self, pretrained=True, dropout=0.3):
+    def __init__(self, pretrained=True, dropout=CLASSIFIER_DROPOUT):
         super().__init__()
         if pretrained:
             self.backbone = models.efficientnet_b0(weights=EfficientNet_B0_Weights.IMAGENET1K_V1)
@@ -372,7 +377,7 @@ def launch_app(model_path=MODEL_PATH):
         predict_btn.click(fn=predict_and_visualize, inputs=input_image,
                           outputs=[output_image, output_label])
 
-    demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
+    demo.launch(server_name=GRADIO_HOST, server_port=GRADIO_PORT, share=GRADIO_SHARE)
 
 
 # =====================================================================

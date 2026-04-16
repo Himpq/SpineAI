@@ -1,29 +1,38 @@
-# Web 演示（OPLL & L4/L5 Locator）
+# remoteInferer
 
-快速说明：
-- 该目录提供一个最小的 Flask 前端页面，用于展示两个模块（OPLL segmentation 与 L4/L5 Locator）的介绍和占位图片。
-- 当前后端接口为占位（返回 501），前端已预留调用按钮与显示区，后续可以把模型推理逻辑接入 `/api/opll` 与 `/api/l4l5locator`。
+这是独立的推理后端，和 `spine.healthit.cn` 分开。
 
-运行（推荐虚拟环境）：
-1. 安装依赖：
+## 运行
+
+1. 安装依赖。
 
 ```bash
 pip install -r requirements.txt
 ```
 
-2. 运行：
+2. 启动推理服务。
 
 ```bash
-python app.py
-# 或者
-# set FLASK_APP=app.py
-# flask run --host=0.0.0.0 --port=5000
+python remote_infer_server.py
 ```
 
-3. 打开浏览器访问：http://127.0.0.1:5000
+## 配置
 
-开发说明：
-- 演示接口：`/api/l4l5locator/demo` 返回示例 JSON 与示意图（仅用于前端演示）。
-- 报告演示接口：`/api/report/spine_demo` 与 `/api/report/opll_demo` 返回示例量化报告 JSON 与示例图像。
-- 模型推理接口：编辑 `app.py`，在 `/api/opll` 与 `/api/l4l5locator` 添加实现。
-- 前端模板：`templates/index.html`；静态资源：`static/`
+- 所有运行时配置都放在 [config.json](config.json)。
+- 这里不再提供 `app.py` 前端壳，也不再使用环境变量作为配置来源。
+- 模型路径、推理端口、默认阈值、权重目录都可以直接在 JSON 里改。
+
+## 保留文件
+
+- [remote_infer_server.py](remote_infer_server.py)：主推理 API。
+- [detect_api_v3.py](detect_api_v3.py)：当前主线推理管线。
+- [detect_api_tansit.py](detect_api_tansit.py)：颈椎侧位关键点管线。
+- [classify.py](classify.py)：分类器与推理模型定义。
+- [settings.py](settings.py)：JSON 配置读取工具。
+- [config.json](config.json)：运行配置。
+
+## 已删除的旧内容
+
+- `app.py` 前端壳已删除。
+- `detect_api.py` 和 `detect_api_v2.py` 已删除。
+- `static/` 和 `templates/` 前端资源已删除。

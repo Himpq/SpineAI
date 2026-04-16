@@ -3,8 +3,11 @@ import base64
 import json
 import math
 import os
+import pathlib
+import pickle
 import time
 import traceback
+import types
 import ctypes
 from ctypes import wintypes
 from typing import Optional
@@ -12,6 +15,8 @@ import json
 import cv2
 import numpy as np
 from flask import Flask, jsonify, request
+
+from settings import first_existing_path, get_path, get_value
 
 try:
     import psutil
@@ -41,6 +46,50 @@ except ImportError as e:
 
 app = Flask(__name__)
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+REMOTE_INFER_SERVER_HOST = get_value("remote_infer_server_host", default="0.0.0.0")
+REMOTE_INFER_SERVER_PORT = int(get_value("remote_infer_server_port", default=8000))
+REMOTE_INFER_SERVER_DEBUG = bool(get_value("remote_infer_server_debug", default=False))
+REMOTE_INFER_SERVER_WEIGHTS_DIR = get_path("remote_infer_server_weights_dir", default="./weights")
+REMOTE_INFER_SERVER_DEFAULT_MODEL_FILES = get_value(
+    "remote_infer_server_default_model_files",
+    default={
+        "clavicle": "锁骨_T1识别.pt",
+        "t1": "锁骨_T1识别.pt",
+        "pelvis": "盆骨锁骨分割模型_hrnetw32ms.pth",
+        "sacrum": "盆骨锁骨分割模型_hrnetw32ms.pth",
+    },
+) or {
+    "clavicle": "锁骨_T1识别.pt",
+    "t1": "锁骨_T1识别.pt",
+    "pelvis": "盆骨锁骨分割模型_hrnetw32ms.pth",
+    "sacrum": "盆骨锁骨分割模型_hrnetw32ms.pth",
+}
+REMOTE_INFER_SERVER_MODEL_ALIASES = get_value(
+    "remote_infer_server_model_aliases",
+    default={
+        "clavicle": ["锁骨_T1识别.pt", "锁骨_T1识别", "suogu", "lockbone", "T1", "t1"],
+        "t1": ["锁骨_T1识别.pt", "锁骨_T1识别", "T1", "t1"],
+        "pelvis": ["盆骨锁骨分割模型_hrnetw32ms.pth", "盆骨锁骨分割模型_hrnetw32ms", "pelvic", "sacrum"],
+        "sacrum": ["盆骨锁骨分割模型_hrnetw32ms.pth", "盆骨锁骨分割模型_hrnetw32ms", "pelvic", "sacrum"],
+    },
+) or {
+    "clavicle": ["锁骨_T1识别.pt", "锁骨_T1识别", "suogu", "lockbone", "T1", "t1"],
+    "t1": ["锁骨_T1识别.pt", "锁骨_T1识别", "T1", "t1"],
+    "pelvis": ["盆骨锁骨分割模型_hrnetw32ms.pth", "盆骨锁骨分割模型_hrnetw32ms", "pelvic", "sacrum"],
+    "sacrum": ["盆骨锁骨分割模型_hrnetw32ms.pth", "盆骨锁骨分割模型_hrnetw32ms", "pelvic", "sacrum"],
+}
+REMOTE_INFER_SERVER_CLASSIFY_MODEL_CANDIDATES = get_value(
+    "remote_infer_server_classify_model_candidates",
+    default=["./weights/best_model.pth", "./weights/classify.pth", "./classify.pth"],
+) or ["./weights/best_model.pth", "./weights/classify.pth", "./classify.pth"]
+REMOTE_INFER_SERVER_XRAY_VIEW_WEIGHTS = get_path("remote_infer_server_xray_view_weights", default="./weights/xray_view_4class.pth")
+REMOTE_INFER_SERVER_XRAY_VIEW_INPUT_SIZE = int(get_value("remote_infer_server_xray_view_input_size", default=320))
+REMOTE_INFER_SERVER_CLAVICLE_T1_MIN_AREA = int(get_value("remote_infer_server_clavicle_t1_min_area", default=20))
+REMOTE_INFER_SERVER_DEFAULT_IMAGE_SIZE = tuple(int(v) for v in get_value("remote_infer_server_default_image_size", default=[512, 512]))
+REMOTE_INFER_SERVER_DEFAULT_CONF = float(get_value("remote_infer_server_default_conf", default=0.15))
+REMOTE_INFER_SERVER_TANSIT_CONF = float(get_value("remote_infer_server_tansit_conf", default=0.3))
+
 _XRAY_CLASSIFIER = None
 _XRAY_CLASSIFIER_INIT_ERROR = None
 _CPU_TIMES_PREV = None
@@ -50,6 +99,51 @@ _CLAVICLE_T1_MODEL_CACHE = {}
 
 _XRAY_VIEW_CLASSIFIER = None
 _XRAY_VIEW_CLASSIFIER_INIT_ERROR = None
+
+
+def _build_pathfix_pickle_module():
+    if os.name == "nt":
+        def path_factory(*args, **kwargs):
+            return pathlib.WindowsPath(*args, **kwargs)
+    else:
+        def path_factory(*args, **kwargs):
+            return pathlib.PosixPath(*args, **kwargs)
+
+    class PathFixUnpickler(pickle.Unpickler):
+        def find_class(self, module, name):
+            if module.startswith("pathlib") and (
+                "WindowsPath" in name
+                or "PureWindowsPath" in name
+                or "PosixPath" in name
+                or "PurePosixPath" in name
+            ):
+                return path_factory
+            return super().find_class(module, name)
+
+    pickle_module = types.ModuleType("pathfix_pickle")
+    pickle_module.Unpickler = PathFixUnpickler
+    return pickle_module
+
+
+def _torch_load_checkpoint(path: str, map_location, weights_only: bool = False):
+    try:
+        return torch.load(path, map_location=map_location, weights_only=weights_only)
+    except TypeError:
+        return torch.load(path, map_location=map_location)
+    except Exception as first_exc:
+        try:
+            pickle_module = _build_pathfix_pickle_module()
+            try:
+                return torch.load(
+                    path,
+                    map_location=map_location,
+                    weights_only=weights_only,
+                    pickle_module=pickle_module,
+                )
+            except TypeError:
+                return torch.load(path, map_location=map_location, pickle_module=pickle_module)
+        except Exception as second_exc:
+            raise RuntimeError(f"Failed to load checkpoint: {path}. Primary error: {first_exc}. Fallback error: {second_exc}") from second_exc
 
 @app.after_request
 def add_cors_headers(resp):
@@ -215,7 +309,11 @@ class XRayViewClassifierV2:
 
     def predict_array(self, img_bgr: np.ndarray):
         img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-        img_resized = cv2.resize(img_gray, (320, 320), interpolation=cv2.INTER_LINEAR)
+        img_resized = cv2.resize(
+            img_gray,
+            (REMOTE_INFER_SERVER_XRAY_VIEW_INPUT_SIZE, REMOTE_INFER_SERVER_XRAY_VIEW_INPUT_SIZE),
+            interpolation=cv2.INTER_LINEAR,
+        )
         img3 = np.repeat(img_resized[:, :, None], 3, axis=2).astype(np.float32) / 255.0
         mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
         std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
@@ -244,11 +342,15 @@ def _get_xray_view_classifier():
     try:
         if timm is None:
             raise ImportError("timm is not installed")
-        
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        model_path = os.path.join(base_dir, "weights", "xray_view_4class.pth")
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Missing view classifier weights at {model_path}")
+
+        model_path = first_existing_path(
+            [
+                REMOTE_INFER_SERVER_XRAY_VIEW_WEIGHTS,
+                os.path.join(BASE_DIR, "weights", "xray_view_4class.pth"),
+            ]
+        )
+        if not model_path:
+            raise FileNotFoundError(f"Missing view classifier weights at {REMOTE_INFER_SERVER_XRAY_VIEW_WEIGHTS}")
         
         _XRAY_VIEW_CLASSIFIER = XRayViewClassifierV2(model_path)
         return _XRAY_VIEW_CLASSIFIER
@@ -270,17 +372,15 @@ def _get_xray_classifier():
     try:
         from classify import SpinePredictor
 
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        env_model = os.getenv("CLASSIFY_MODEL_PATH")
-        env_model = "./weights/classify.pth"
-        model_candidates = [
-            env_model,
-            os.path.join(base_dir, "classify.pth"),
-        ]
-        model_path = next((p for p in model_candidates if p and os.path.exists(p)), None)
+        candidate_paths = list(REMOTE_INFER_SERVER_CLASSIFY_MODEL_CANDIDATES) if isinstance(REMOTE_INFER_SERVER_CLASSIFY_MODEL_CANDIDATES, list) else [REMOTE_INFER_SERVER_CLASSIFY_MODEL_CANDIDATES]
+        candidate_paths.extend([
+            os.path.join(BASE_DIR, "classify.pth"),
+            os.path.join(BASE_DIR, "weights", "classify.pth"),
+        ])
+        model_path = first_existing_path(candidate_paths)
 
         if model_path is None:
-            raise FileNotFoundError("No valid classifier model found. Set CLASSIFY_MODEL_PATH or place classify.pth in project root.")
+            raise FileNotFoundError("No valid classifier model found. Configure remote_infer_server_classify_model_candidates in config.json or place classify.pth in the project root.")
 
         _XRAY_CLASSIFIER = SpinePredictor(model_path=model_path, onnx_path=None)
         return _XRAY_CLASSIFIER
@@ -292,26 +392,26 @@ def _get_xray_classifier():
 
 
 def _resolve_model_path(model_name: str, model_path: Optional[str]):
-    base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = []
-    alias_dir_map = {
-        "clavicle": ["锁骨_T1识别.pt", "锁骨_T1识别", "suogu", "lockbone", "T1", "t1"],
-        "t1": ["锁骨_T1识别.pt", "锁骨_T1识别", "T1", "t1"],
-        "pelvis": ["盆骨锁骨分割模型_hrnetw32ms.pth", "盆骨锁骨分割模型_hrnetw32ms", "pelvic", "sacrum"],
-        "sacrum": ["盆骨锁骨分割模型_hrnetw32ms.pth", "盆骨锁骨分割模型_hrnetw32ms", "pelvic", "sacrum"],
-    }
+    alias_dir_map = REMOTE_INFER_SERVER_MODEL_ALIASES
+    weights_dir = REMOTE_INFER_SERVER_WEIGHTS_DIR or os.path.join(BASE_DIR, "weights")
     if model_path:
         candidates.append(model_path)
-        candidates.append(os.path.join(base_dir, model_path))
+        candidates.append(os.path.join(BASE_DIR, model_path))
     if model_name:
-        names = [model_name]
+        names = []
+        default_file = REMOTE_INFER_SERVER_DEFAULT_MODEL_FILES.get(model_name)
+        if default_file:
+            names.append(default_file)
+        names.append(model_name)
         names.extend(alias_dir_map.get(model_name, []))
         for resolved_name in names:
             candidates.extend(
                 [
-                    os.path.join(base_dir, "weights", resolved_name),
-                    os.path.join(base_dir, "weights", f"{resolved_name}.pt"),
-                    os.path.join(base_dir, "weights", f"{resolved_name}.pth"),
+                    os.path.join(weights_dir, resolved_name),
+                    os.path.join(weights_dir, f"{resolved_name}.pt"),
+                    os.path.join(weights_dir, f"{resolved_name}.pth"),
+                    os.path.join(weights_dir, f"{resolved_name}.onnx"),
                 ]
             )
     for cand in candidates:
@@ -477,7 +577,7 @@ def _annotate_clavicle_t1_overlay(pred: np.ndarray, overlay: np.ndarray):
         components = []
         for label_idx in range(1, num_labels):
             area = int(stats[label_idx, cv2.CC_STAT_AREA])
-            if area < 20:
+            if area < REMOTE_INFER_SERVER_CLAVICLE_T1_MIN_AREA:
                 continue
             ys, xs = np.where(labels == label_idx)
             if len(xs) == 0:
@@ -608,7 +708,7 @@ def _load_clavicle_t1_model(model_path: str):
         raise RuntimeError("torch is required for clavicle/T1 .pt model")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    checkpoint = torch.load(model_path, map_location=device)
+    checkpoint = _torch_load_checkpoint(model_path, map_location=device, weights_only=False)
     if isinstance(checkpoint, dict) and "model" in checkpoint and isinstance(checkpoint.get("model"), dict):
         state_dict = checkpoint["model"]
         args = checkpoint.get("args", {}) if isinstance(checkpoint.get("args"), dict) else {}
@@ -619,12 +719,12 @@ def _load_clavicle_t1_model(model_path: str):
         raise RuntimeError("Unsupported clavicle/T1 checkpoint format")
 
     base_ch = int(args.get("base_ch", 32))
-    img_size = args.get("img_size", [512, 512])
+    img_size = args.get("img_size", list(REMOTE_INFER_SERVER_DEFAULT_IMAGE_SIZE))
     if isinstance(img_size, (list, tuple)) and len(img_size) >= 2:
         img_w = int(img_size[0])
         img_h = int(img_size[1])
     else:
-        img_w, img_h = 512, 512
+        img_w, img_h = REMOTE_INFER_SERVER_DEFAULT_IMAGE_SIZE
 
     model = _UNetSeg(in_ch=1, out_ch=3, base_ch=base_ch).to(device)
     model.load_state_dict(state_dict, strict=False)
@@ -704,10 +804,10 @@ def _load_seg_model(model_path: str):
         raise RuntimeError("timm is required for .pth segmentation model")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    checkpoint = torch.load(model_path, map_location=device)
+    checkpoint = _torch_load_checkpoint(model_path, map_location=device, weights_only=False)
     state_dict = checkpoint.get("model_state_dict", checkpoint)
     num_classes = int(checkpoint.get("num_classes", 5))
-    image_size = checkpoint.get("image_size", [512, 512])
+    image_size = checkpoint.get("image_size", list(REMOTE_INFER_SERVER_DEFAULT_IMAGE_SIZE))
     image_size = (int(image_size[0]), int(image_size[1]))
     backbone = checkpoint.get("backbone", "hrnet_w32")
 
@@ -1040,17 +1140,11 @@ def _infer_extra_model_by_name(model_name: str):
         return jsonify({"status": "error", "message": "image_base64 missing"}), 400
 
     try:
-        conf = float(data.get("conf", 0.15))
+        conf = float(data.get("conf", REMOTE_INFER_SERVER_DEFAULT_CONF))
     except Exception:
-        conf = 0.15
-    default_file_map = {
-        "clavicle": "锁骨_T1识别.pt",
-        "t1": "锁骨_T1识别.pt",
-        "pelvis": "盆骨锁骨分割模型_hrnetw32ms.pth",
-        "sacrum": "盆骨锁骨分割模型_hrnetw32ms.pth",
-    }
-    default_file = default_file_map.get(model_name, model_name)
-    default_path = os.path.join("weights", default_file)
+        conf = REMOTE_INFER_SERVER_DEFAULT_CONF
+    default_file = REMOTE_INFER_SERVER_DEFAULT_MODEL_FILES.get(model_name, model_name)
+    default_path = os.path.join(REMOTE_INFER_SERVER_WEIGHTS_DIR or os.path.join(BASE_DIR, "weights"), default_file)
     input_model_path = data.get("model_path") or data.get("weights_path") or default_path
     model_path = _resolve_model_path(model_name=model_name, model_path=input_model_path)
     if model_path is None:
@@ -1100,10 +1194,13 @@ def infer_pelvis():
 
 def main():
     parser = argparse.ArgumentParser(description="Remote inference server")
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--host", default=REMOTE_INFER_SERVER_HOST)
+    parser.add_argument("--port", type=int, default=REMOTE_INFER_SERVER_PORT)
+    parser.add_argument("--debug", dest="debug", action="store_true")
+    parser.add_argument("--no-debug", dest="debug", action="store_false")
+    parser.set_defaults(debug=REMOTE_INFER_SERVER_DEBUG)
     args = parser.parse_args()
-    app.run(host=args.host, port=args.port, debug=False)
+    app.run(host=args.host, port=args.port, debug=args.debug)
 
 
 if __name__ == "__main__":
