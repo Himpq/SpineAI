@@ -4,12 +4,14 @@ import io
 import json
 import os
 import secrets
+import time
 import threading
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from functools import wraps
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import qrcode
 import requests
@@ -35,6 +37,7 @@ app.config.update(
     APP_HOST=get_value("APP_HOST", "0.0.0.0"),
     APP_PORT=int(get_value("APP_PORT", 19191)),
     APP_DEBUG=bool(get_value("APP_DEBUG", True)),
+    APP_DOMAIN=get_value("APP_DOMAIN", ""),
     SECRET_KEY=get_value("SECRET_KEY", "spine-workbench-secret-change-me"),
     SQLALCHEMY_DATABASE_URI=f"sqlite:///{DB_PATH.as_posix()}",
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
@@ -42,6 +45,9 @@ app.config.update(
     REMOTE_INFER_BASE=get_value("REMOTE_INFER_BASE", "http://spine.healthit.cn:15443"),
     REMOTE_INFER_TIMEOUT=int(get_value("REMOTE_INFER_TIMEOUT", 60)),
     ALERT_COBB=float(get_value("ALERT_COBB", 45)),
+    FOLLOWUP_DEFAULT_CYCLE_DAYS=int(get_value("FOLLOWUP_DEFAULT_CYCLE_DAYS", 30)),
+    FOLLOWUP_REMINDER_DAYS=int(get_value("FOLLOWUP_REMINDER_DAYS", 7)),
+    FOLLOWUP_SWEEP_INTERVAL=int(get_value("FOLLOWUP_SWEEP_INTERVAL", 300)),
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
     STEPFUN_API_BASE=get_value("STEPFUN_API_BASE", "https://api.stepfun.com/v1"),
     STEPFUN_API_KEY=get_value("STEPFUN_API_KEY", ""),
@@ -76,6 +82,8 @@ ALLOWED_UPLOAD_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 WS_LOCK = threading.Lock()
 WS_CHANNELS = defaultdict(set)
 WS_META = {}
+FOLLOWUP_SWEEP_LOCK = threading.Lock()
+FOLLOWUP_SWEEP_THREAD_STARTED = False
 
 
 def utcnow():
@@ -115,6 +123,15 @@ def to_float(value, default=None):
         if value is None:
             return default
         return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def to_int(value, default=None):
+    try:
+        if value is None:
+            return default
+        return int(float(value))
     except (TypeError, ValueError):
         return default
 
@@ -231,6 +248,7 @@ class Patient(db.Model):
     phone = db.Column(db.String(32), nullable=True)
     email = db.Column(db.String(120), nullable=True)
     note = db.Column(db.Text, nullable=True)
+    followup_cycle_days = db.Column(db.Integer, nullable=True)
     portal_token = db.Column(db.String(64), unique=True, nullable=False, index=True)
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("wb_users.id"), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
@@ -302,6 +320,9 @@ class FollowUpSchedule(db.Model):
     note = db.Column(db.Text, nullable=True)
     scheduled_at = db.Column(db.DateTime, nullable=False)
     status = db.Column(db.String(16), nullable=False, default="todo")
+    reminded_at = db.Column(db.DateTime, nullable=True)
+    overdue_notified_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("wb_users.id"), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
@@ -616,6 +637,7 @@ def compute_unread_for_participant(part):
         Message.query.filter(
             Message.conversation_id == part.conversation_id,
             Message.id > last_read,
+            Message.sender_kind != "system",
             or_(Message.sender_kind != "user", Message.sender_user_id != part.user_id),
         )
         .count()
@@ -661,6 +683,7 @@ def get_user_patient_unread_map(user_id):
             Message.query.filter(
                 Message.conversation_id == conv.id,
                 Message.id > last_read,
+                Message.sender_kind != "system",
                 or_(Message.sender_kind != "user", Message.sender_user_id != user_id),
             )
             .count()
@@ -682,6 +705,29 @@ def serialize_patient_row(patient, unread_map):
         .order_by(Exam.reviewed_at.desc(), Exam.id.desc())
         .first()
     )
+    last_followup_schedule = (
+        FollowUpSchedule.query.filter(
+            FollowUpSchedule.patient_id == patient.id,
+            FollowUpSchedule.status == "done",
+        )
+        .order_by(FollowUpSchedule.completed_at.desc(), FollowUpSchedule.scheduled_at.desc(), FollowUpSchedule.id.desc())
+        .first()
+    )
+    next_followup_schedule = (
+        FollowUpSchedule.query.filter(
+            FollowUpSchedule.patient_id == patient.id,
+            FollowUpSchedule.status.in_(["todo", "overdue"]),
+        )
+        .order_by(FollowUpSchedule.scheduled_at.asc(), FollowUpSchedule.id.asc())
+        .first()
+    )
+    last_followup_at = None
+    if last_followup_schedule and last_followup_schedule.completed_at:
+        last_followup_at = last_followup_schedule.completed_at
+    elif last_followup_exam and last_followup_exam.reviewed_at:
+        last_followup_at = last_followup_exam.reviewed_at
+    elif last_followup_schedule:
+        last_followup_at = last_followup_schedule.scheduled_at
 
     status = "follow_up"
     if latest_exam and latest_exam.status == "pending_review":
@@ -701,10 +747,13 @@ def serialize_patient_row(patient, unread_map):
         "status": status,
         "status_text": {"follow_up": "随访中", "pending_review": "待复核", "inferring": "推理中", "has_message": "有消息"}[status],
         "unread_count": unread_map.get(patient.id, 0),
+        "followup_cycle_days": get_patient_followup_cycle_days(patient),
         "exam_count": Exam.query.filter_by(patient_id=patient.id).count(),
         "last_exam_date": iso(latest_exam.created_at if latest_exam else None),
-        "last_followup": iso(last_followup_exam.reviewed_at if last_followup_exam else None),
-        "portal_url": url_for("public_portal_page", token=patient.portal_token, _external=True),
+        "last_followup": iso(last_followup_at),
+        "next_followup_at": iso(next_followup_schedule.scheduled_at if next_followup_schedule else None),
+        "next_followup_status": next_followup_schedule.status if next_followup_schedule else None,
+        "portal_url": build_public_url("public_portal_page", token=patient.portal_token),
         "updated_at": iso(patient.updated_at),
     }
 
@@ -772,7 +821,400 @@ def serialize_schedule(item):
         "note": item.note,
         "scheduled_at": iso(item.scheduled_at),
         "status": item.status,
+        "reminded_at": iso(item.reminded_at),
+        "overdue_notified_at": iso(item.overdue_notified_at),
+        "completed_at": iso(item.completed_at),
+        "is_overdue": item.status == "overdue" or (item.status == "todo" and item.scheduled_at < utcnow()),
     }
+
+
+def get_patient_followup_cycle_days(patient):
+    cycle_days = to_int(getattr(patient, "followup_cycle_days", None), None)
+    if cycle_days is None or cycle_days <= 0:
+        cycle_days = to_int(app.config.get("FOLLOWUP_DEFAULT_CYCLE_DAYS"), 30) or 30
+    return max(1, cycle_days)
+
+
+def format_followup_datetime(dt_value):
+    if not dt_value:
+        return "--"
+    try:
+        return dt_value.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return "--"
+
+
+def ensure_patient_followup_schedule(patient, base_at=None):
+    cycle_days = get_patient_followup_cycle_days(patient)
+    if cycle_days <= 0:
+        return None
+
+    active_schedule = (
+        FollowUpSchedule.query.filter(
+            FollowUpSchedule.patient_id == patient.id,
+            FollowUpSchedule.status.in_(["todo", "overdue"]),
+        )
+        .order_by(FollowUpSchedule.scheduled_at.asc(), FollowUpSchedule.id.asc())
+        .first()
+    )
+    if active_schedule:
+        return active_schedule
+
+    if base_at is None:
+        last_completed = (
+            FollowUpSchedule.query.filter(
+                FollowUpSchedule.patient_id == patient.id,
+                FollowUpSchedule.status == "done",
+            )
+            .order_by(FollowUpSchedule.completed_at.desc(), FollowUpSchedule.scheduled_at.desc(), FollowUpSchedule.id.desc())
+            .first()
+        )
+        if last_completed and last_completed.completed_at:
+            base_at = last_completed.completed_at
+        elif last_completed:
+            base_at = last_completed.scheduled_at
+        else:
+            base_at = patient.created_at or utcnow()
+
+    scheduled_at = base_at + timedelta(days=cycle_days)
+    now = utcnow()
+    while scheduled_at <= now:
+        scheduled_at += timedelta(days=cycle_days)
+
+    row = FollowUpSchedule(
+        patient_id=patient.id,
+        title=f"{cycle_days}天随访",
+        note="系统自动生成随访计划",
+        scheduled_at=scheduled_at,
+        status="todo",
+        created_by_user_id=patient.created_by_user_id,
+    )
+    db.session.add(row)
+    return row
+
+
+def create_followup_notice(patient, schedule, notice_type):
+    conv = get_or_create_patient_conversation(patient)
+    if notice_type == "overdue":
+        title = "随访逾期提醒"
+        content = f"系统提醒：您的随访「{schedule.title}」已于 {format_followup_datetime(schedule.scheduled_at)} 到期，请尽快完成。"
+        event_type = "followup_overdue"
+        level = "warn"
+    else:
+        title = "随访提醒"
+        content = f"系统提醒：您的随访「{schedule.title}」将在 {format_followup_datetime(schedule.scheduled_at)} 到期，请尽快完成。"
+        event_type = "followup_reminder"
+        level = "info"
+
+    message = Message(
+        conversation_id=conv.id,
+        sender_kind="system",
+        sender_name="系统提醒",
+        message_type=f"followup_{notice_type}",
+        content=content,
+        payload_json=json_dumps(
+            {
+                "notice_type": notice_type,
+                "patient_id": patient.id,
+                "schedule_id": schedule.id,
+                "scheduled_at": iso(schedule.scheduled_at),
+            }
+        ),
+    )
+    conv.updated_at = utcnow()
+    db.session.add(message)
+    create_work_event(
+        event_type,
+        title,
+        content,
+        level=level,
+        patient_id=patient.id,
+        ref={"schedule_id": schedule.id, "notice_type": notice_type},
+    )
+    ws_broadcast(f"chat:{conv.id}", {"type": "chat_message", "conversation_id": conv.id, "message": serialize_message(message)})
+    return message
+
+
+def create_followup_reschedule_notice(patient, schedule, previous_scheduled_at, delta_days):
+    conv = get_or_create_patient_conversation(patient)
+    delta_days = max(1, to_int(delta_days, 1) or 1)
+    previous_text = format_followup_datetime(previous_scheduled_at)
+    next_text = format_followup_datetime(schedule.scheduled_at)
+    content = f"医生已将您的随访「{schedule.title}」从 {previous_text} 调整到 {next_text}。"
+
+    message = Message(
+        conversation_id=conv.id,
+        sender_kind="system",
+        sender_name="系统提醒",
+        message_type="followup_rescheduled",
+        content=content,
+        payload_json=json_dumps(
+            {
+                "notice_type": "rescheduled",
+                "patient_id": patient.id,
+                "schedule_id": schedule.id,
+                "scheduled_at": iso(schedule.scheduled_at),
+                "previous_scheduled_at": iso(previous_scheduled_at),
+                "delta_days": delta_days,
+            }
+        ),
+    )
+    conv.updated_at = utcnow()
+    db.session.add(message)
+    create_work_event(
+        "followup_rescheduled",
+        "随访已改期",
+        content,
+        level="info",
+        patient_id=patient.id,
+        ref={"schedule_id": schedule.id, "delta_days": delta_days, "previous_scheduled_at": iso(previous_scheduled_at)},
+    )
+    ws_broadcast(f"chat:{conv.id}", {"type": "chat_message", "conversation_id": conv.id, "message": serialize_message(message)})
+    return message
+
+
+def build_followup_insights(patient, exams=None, schedules=None, now=None):
+    now = now or utcnow()
+    reminder_days = max(1, to_int(app.config.get("FOLLOWUP_REMINDER_DAYS"), 7) or 7)
+    alert_cobb = to_float(app.config.get("ALERT_COBB"), 45) or 45
+    cycle_days = get_patient_followup_cycle_days(patient)
+
+    if exams is None:
+        exams = Exam.query.filter_by(patient_id=patient.id).order_by(Exam.created_at.asc(), Exam.id.asc()).all()
+    if schedules is None:
+        schedules = (
+            FollowUpSchedule.query.filter_by(patient_id=patient.id)
+            .order_by(FollowUpSchedule.scheduled_at.asc(), FollowUpSchedule.id.asc())
+            .all()
+        )
+
+    active_schedules = [i for i in schedules if i.status in {"todo", "overdue"}]
+    done_schedules = [i for i in schedules if i.status == "done"]
+    due_soon_cutoff = now + timedelta(days=reminder_days)
+    due_soon_schedules = [i for i in active_schedules if now <= i.scheduled_at <= due_soon_cutoff]
+    overdue_schedules = [i for i in active_schedules if i.scheduled_at < now or i.status == "overdue"]
+    next_schedule = active_schedules[0] if active_schedules else None
+    last_done_schedule = done_schedules[-1] if done_schedules else None
+
+    trend = []
+    for exam in exams:
+        if exam.cobb_angle is None:
+            continue
+        trend.append(
+            {
+                "date": iso(exam.reviewed_at or exam.created_at),
+                "cobb_angle": exam.cobb_angle,
+                "status": exam.status,
+            }
+        )
+    trend = trend[-12:]
+    trend_delta = None
+    if len(trend) >= 2:
+        first = to_float(trend[0].get("cobb_angle"), None)
+        last = to_float(trend[-1].get("cobb_angle"), None)
+        if first is not None and last is not None:
+            trend_delta = round(last - first, 2)
+
+    completion_rate = None
+    total_schedules = len(done_schedules) + len(active_schedules)
+    if total_schedules > 0:
+        completion_rate = round((len(done_schedules) / total_schedules) * 100, 1)
+
+    latest_exam = exams[-1] if exams else None
+    latest_angle = to_float(trend[-1]["cobb_angle"], None) if trend else None
+
+    risk_tags = []
+    if overdue_schedules:
+        risk_tags.append(f"逾期 {len(overdue_schedules)}")
+    if due_soon_schedules:
+        risk_tags.append(f"{reminder_days}天内到期 {len(due_soon_schedules)}")
+    if completion_rate is not None and completion_rate < 80:
+        risk_tags.append(f"完成率 {completion_rate:.1f}%")
+    if latest_exam and latest_exam.status == "pending_review":
+        risk_tags.append("待复核")
+    if latest_angle is not None and latest_angle >= alert_cobb:
+        risk_tags.append("高 Cobb")
+    if trend_delta is not None:
+        if trend_delta >= 5:
+            risk_tags.append("趋势上升")
+        elif trend_delta <= -5:
+            risk_tags.append("趋势改善")
+
+    risk_score = 20.0
+    if overdue_schedules:
+        risk_score += min(30.0, len(overdue_schedules) * 12.0)
+    if due_soon_schedules:
+        risk_score += min(18.0, len(due_soon_schedules) * 6.0)
+    if completion_rate is not None:
+        if completion_rate < 60:
+            risk_score += 18.0
+        elif completion_rate < 80:
+            risk_score += 10.0
+    if latest_exam and latest_exam.status == "pending_review":
+        risk_score += 10.0
+    if latest_angle is not None:
+        if latest_angle >= alert_cobb:
+            risk_score += 22.0
+        elif latest_angle >= alert_cobb * 0.75:
+            risk_score += 10.0
+    if trend_delta is not None:
+        if trend_delta >= 8:
+            risk_score += 18.0
+        elif trend_delta >= 5:
+            risk_score += 12.0
+        elif trend_delta >= 2:
+            risk_score += 6.0
+        elif trend_delta <= -8:
+            risk_score -= 10.0
+        elif trend_delta <= -5:
+            risk_score -= 6.0
+
+    risk_score = int(round(max(0.0, min(100.0, risk_score))))
+
+    risk_level = "low"
+    if risk_score >= 70:
+        risk_level = "high"
+    elif risk_score >= 40:
+        risk_level = "medium"
+
+    treatment_phase_key = "baseline"
+    treatment_phase_label = "基线评估期"
+    treatment_phase_desc = "建议先完成影像与基础问卷，建立可追踪的初始状态。"
+
+    if latest_exam and latest_exam.status == "pending_review":
+        treatment_phase_key = "review_pending"
+        treatment_phase_label = "复核等待期"
+        treatment_phase_desc = "最近影像待复核，建议优先完成复核后再调整干预策略。"
+    elif latest_angle is not None and latest_angle >= alert_cobb:
+        treatment_phase_key = "intensive"
+        treatment_phase_label = "强化干预期"
+        treatment_phase_desc = "当前 Cobb 角较高，建议缩短随访周期并执行强化干预。"
+    elif trend_delta is not None and trend_delta <= -5 and (completion_rate is not None and completion_rate >= 70):
+        treatment_phase_key = "consolidation"
+        treatment_phase_label = "改善巩固期"
+        treatment_phase_desc = "趋势显示明显改善，建议维持训练并关注反弹风险。"
+    elif completion_rate is not None and completion_rate >= 80 and not overdue_schedules:
+        treatment_phase_key = "maintenance"
+        treatment_phase_label = "维持管理期"
+        treatment_phase_desc = "随访执行稳定，可按既定周期进行维持管理。"
+    elif exams:
+        treatment_phase_key = "routine"
+        treatment_phase_label = "常规随访期"
+        treatment_phase_desc = "已有连续数据，建议按周期复查并关注趋势变化。"
+
+    summary_parts = []
+    if overdue_schedules:
+        summary_parts.append(f"有 {len(overdue_schedules)} 项随访已逾期")
+    elif due_soon_schedules:
+        summary_parts.append(f"有 {len(due_soon_schedules)} 项将在 {reminder_days} 天内到期")
+    elif next_schedule:
+        summary_parts.append(f"下一次随访在 {format_followup_datetime(next_schedule.scheduled_at)}")
+    else:
+        summary_parts.append(f"当前尚未生成随访计划，建议设置 {cycle_days} 天周期")
+
+    if completion_rate is not None:
+        summary_parts.append(f"本周期完成率 {completion_rate:.1f}%")
+    if latest_exam and latest_exam.status == "pending_review":
+        summary_parts.append("仍有影像待复核")
+    if trend_delta is not None and abs(trend_delta) >= 5:
+        direction = "上升" if trend_delta > 0 else "下降"
+        summary_parts.append(f"最近 Cobb 角较早期{direction} {abs(trend_delta):.1f}°")
+
+    return {
+        "cycle_days": cycle_days,
+        "reminder_days": reminder_days,
+        "total_schedules": total_schedules,
+        "active_schedules": len(active_schedules),
+        "completed_schedules": len(done_schedules),
+        "due_soon_schedules": len(due_soon_schedules),
+        "overdue_schedules": len(overdue_schedules),
+        "completion_rate": completion_rate,
+        "next_due_at": iso(next_schedule.scheduled_at) if next_schedule else None,
+        "next_due_status": next_schedule.status if next_schedule else None,
+        "last_completed_at": iso(last_done_schedule.completed_at if last_done_schedule and last_done_schedule.completed_at else last_done_schedule.scheduled_at) if last_done_schedule else None,
+        "risk_score": risk_score,
+        "risk_level": risk_level,
+        "risk_tags": risk_tags,
+        "summary": "；".join(summary_parts),
+        "trend_delta": trend_delta,
+        "treatment_phase": {
+            "key": treatment_phase_key,
+            "label": treatment_phase_label,
+            "description": treatment_phase_desc,
+        },
+        "trend": trend,
+        "schedules": [serialize_schedule(item) for item in schedules[:20]],
+    }
+
+
+def sweep_followup_notifications():
+    now = utcnow()
+    reminder_days = max(1, to_int(app.config.get("FOLLOWUP_REMINDER_DAYS"), 7) or 7)
+    reminder_cutoff = now + timedelta(days=reminder_days)
+    changed = False
+
+    patients_with_cycle = Patient.query.filter(Patient.followup_cycle_days.isnot(None)).all()
+    for patient in patients_with_cycle:
+        active_exists = FollowUpSchedule.query.filter(
+            FollowUpSchedule.patient_id == patient.id,
+            FollowUpSchedule.status.in_(["todo", "overdue"]),
+        ).first()
+        if not active_exists:
+            created = ensure_patient_followup_schedule(patient)
+            if created:
+                changed = True
+
+    schedules = (
+        FollowUpSchedule.query.filter(FollowUpSchedule.status.in_(["todo", "overdue"]))
+        .order_by(FollowUpSchedule.scheduled_at.asc(), FollowUpSchedule.id.asc())
+        .all()
+    )
+
+    for schedule in schedules:
+        patient = schedule.patient
+        if not patient:
+            continue
+
+        if schedule.status == "todo" and schedule.scheduled_at < now:
+            schedule.status = "overdue"
+            changed = True
+
+        if schedule.status == "todo" and schedule.reminded_at is None and now <= schedule.scheduled_at <= reminder_cutoff:
+            schedule.reminded_at = now
+            create_followup_notice(patient, schedule, "reminder")
+            changed = True
+
+        if schedule.status == "overdue" and schedule.overdue_notified_at is None:
+            schedule.overdue_notified_at = now
+            create_followup_notice(patient, schedule, "overdue")
+            changed = True
+
+    if changed:
+        db.session.commit()
+
+
+def _followup_sweep_loop():
+    interval = max(60, to_int(app.config.get("FOLLOWUP_SWEEP_INTERVAL"), 300) or 300)
+    while True:
+        try:
+            with app.app_context():
+                sweep_followup_notifications()
+        except Exception:
+            pass
+        time.sleep(interval)
+
+
+def start_followup_sweeper():
+    global FOLLOWUP_SWEEP_THREAD_STARTED
+    if FOLLOWUP_SWEEP_THREAD_STARTED:
+        return
+    if app.config.get("FOLLOWUP_SWEEP_INTERVAL", 300) <= 0:
+        return
+    if app.debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+        return
+    FOLLOWUP_SWEEP_THREAD_STARTED = True
+    thread = threading.Thread(target=_followup_sweep_loop, name="followup-sweeper", daemon=True)
+    thread.start()
 
 
 def serialize_question(item):
@@ -943,6 +1385,23 @@ def make_qr_data_url(text):
     buf = io.BytesIO()
     image.save(buf, format="PNG")
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+def build_public_url(endpoint, **values):
+    path = url_for(endpoint, _external=False, **values)
+    app_domain = str(app.config.get("APP_DOMAIN") or "").strip()
+    if not app_domain:
+        return url_for(endpoint, _external=True, **values)
+
+    parsed = urlsplit(app_domain)
+    base_path = parsed.path.rstrip("/")
+    final_path = path or "/"
+    if base_path and not (final_path == base_path or final_path.startswith(base_path + "/")):
+        final_path = f"{base_path}/{final_path.lstrip('/')}"
+    elif not final_path.startswith("/"):
+        final_path = f"/{final_path}"
+
+    return urlunsplit((parsed.scheme or request.scheme, parsed.netloc or request.host, final_path, "", ""))
 
 
 def save_upload(file_obj):
@@ -1309,6 +1768,14 @@ XRAY_VIEW_CLASS_TO_ROUTE = {
 }
 
 
+MANUAL_SPINE_CLASS_TO_ROUTE = {
+    "cervical": (0, ["/infer/tansit"]),
+    "pelvis": (1, ["/infer/pelvis"]),
+    "lumbar": (2, ["/infer/l4l5locator", "/infer/l4l5"]),
+    "clavicle": (3, ["/infer/clavicle", "/infer/t1"]),
+}
+
+
 def resolve_xray_view_route(classify_json):
     raw_name = extract_inference_value(classify_json, ["class_name", "class", "label", "type"])
     raw_name_norm = str(raw_name or "").strip().lower()
@@ -1342,6 +1809,15 @@ def resolve_xray_view_route(classify_json):
     if normalized == "clavicle":
         return "clavicle", ["/infer/clavicle", "/infer/t1"]
     return None, None
+
+
+def resolve_manual_spine_route(spine_class):
+    normalized = normalize_spine_class(spine_class)
+    route = MANUAL_SPINE_CLASS_TO_ROUTE.get(normalized or "")
+    if not route:
+        return None, None, None
+    class_id, infer_paths = route
+    return normalized, class_id, list(infer_paths)
 
 
 def resolve_review_owner_user_id(exam):
@@ -1615,7 +2091,7 @@ def call_stepfun_stream(messages, inference_context=None):
             continue
 
 
-def run_remote_inference(exam):
+def run_remote_inference(exam, classification_mode="ai", manual_spine_class=None):
     job = InferenceJob(exam_id=exam.id, status="queued", queued_at=utcnow())
     db.session.add(job)
     db.session.commit()
@@ -1633,37 +2109,62 @@ def run_remote_inference(exam):
 
         b64_image = base64.b64encode(raw_bytes).decode("utf-8")
 
-        classify_payload = {"image_base64": b64_image}
-        classify_response = requests.post(
-            build_remote_url("/classify/xray_view"),
-            json=classify_payload,
-            timeout=app.config["REMOTE_INFER_TIMEOUT"],
-        )
-        if not classify_response.ok:
-            raise RuntimeError(f"远程分类失败 HTTP {classify_response.status_code}")
-        classify_json = classify_response.json() if classify_response.content else {}
-        if isinstance(classify_json, dict) and classify_json.get("status") == "error":
-            raise RuntimeError(classify_json.get("message") or "远程分类返回错误")
+        mode = str(classification_mode or "ai").strip().lower()
+        if mode not in {"ai", "manual"}:
+            mode = "ai"
 
-        print(f"[XRAY_VIEW][exam_id={exam.id}] classify_raw={json.dumps(classify_json, ensure_ascii=False, default=str)}")
-
-        class_name, infer_paths = resolve_xray_view_route(classify_json)
-        class_id = extract_inference_number(classify_json, ["class_id", "id"])
-        class_confidence = extract_inference_number(classify_json, ["confidence", "probability", "prob", "score"])
+        classify_json = {}
+        class_name = None
         class_id_int = None
-        if class_id is not None:
-            try:
-                class_id_int = int(class_id)
-            except (TypeError, ValueError, OverflowError):
-                class_id_int = None
+        class_confidence = None
+        infer_paths = None
 
-        if class_name is None or infer_paths is None:
-            raise RuntimeError("无法识别脊柱类型，未执行推理")
+        if mode == "manual":
+            class_name, class_id_int, infer_paths = resolve_manual_spine_route(manual_spine_class)
+            if class_name is None or infer_paths is None:
+                raise RuntimeError("手动分类参数无效，未执行推理")
+            classify_json = {
+                "mode": "manual",
+                "manual_spine_class": manual_spine_class,
+                "resolved_class_name": class_name,
+                "resolved_class_text": spine_class_text(class_name),
+                "class_id": class_id_int,
+            }
+            print(
+                f"[XRAY_VIEW][exam_id={exam.id}] manual_class={class_name} class_id={class_id_int} "
+                f"infer_paths={infer_paths}"
+            )
+        else:
+            classify_payload = {"image_base64": b64_image}
+            classify_response = requests.post(
+                build_remote_url("/classify/xray_view"),
+                json=classify_payload,
+                timeout=app.config["REMOTE_INFER_TIMEOUT"],
+            )
+            if not classify_response.ok:
+                raise RuntimeError(f"远程分类失败 HTTP {classify_response.status_code}")
+            classify_json = classify_response.json() if classify_response.content else {}
+            if isinstance(classify_json, dict) and classify_json.get("status") == "error":
+                raise RuntimeError(classify_json.get("message") or "远程分类返回错误")
 
-        print(
-            f"[XRAY_VIEW][exam_id={exam.id}] resolved_spine_class={class_name} class_id={class_id_int} "
-            f"confidence={class_confidence} infer_paths={infer_paths}"
-        )
+            print(f"[XRAY_VIEW][exam_id={exam.id}] classify_raw={json.dumps(classify_json, ensure_ascii=False, default=str)}")
+
+            class_name, infer_paths = resolve_xray_view_route(classify_json)
+            class_id = extract_inference_number(classify_json, ["class_id", "id"])
+            class_confidence = extract_inference_number(classify_json, ["confidence", "probability", "prob", "score"])
+            if class_id is not None:
+                try:
+                    class_id_int = int(class_id)
+                except (TypeError, ValueError, OverflowError):
+                    class_id_int = None
+
+            if class_name is None or infer_paths is None:
+                raise RuntimeError("无法识别脊柱类型，未执行推理")
+
+            print(
+                f"[XRAY_VIEW][exam_id={exam.id}] resolved_spine_class={class_name} class_id={class_id_int} "
+                f"confidence={class_confidence} infer_paths={infer_paths}"
+            )
 
         _, _, payload = request_remote_inference_payload(b64_image, infer_paths)
 
@@ -1672,10 +2173,12 @@ def run_remote_inference(exam):
         print(f"[XRAY_VIEW][exam_id={exam.id}] infer_raw={json.dumps(payload, ensure_ascii=False, default=str)}")
         if isinstance(payload, dict):
             payload["_classification"] = {
+                "mode": mode,
                 "class_name": class_name,
                 "class_text": spine_class_text(class_name),
                 "class_id": class_id_int,
                 "confidence": class_confidence,
+                "manual_spine_class": class_name if mode == "manual" else None,
                 "raw": classify_json,
             }
 
@@ -1795,18 +2298,20 @@ def run_remote_inference(exam):
         db.session.commit()
 
         confidence_text = f"{(class_confidence * 100):.1f}%" if class_confidence is not None else "--"
+        classify_text = "手动指定" if mode == "manual" else f"置信度为 {confidence_text}"
         metric_text = ""
         if class_name == "cervical" and cervical_metric and cervical_metric.get("avg_ratio") is not None:
             metric_text = f"，平均左/右比 {float(cervical_metric['avg_ratio']):.3f}"
         create_work_event(
             "inference_result",
             "推理完成，已进入复核",
-            f"推理结果为 {spine_class_text(class_name)}，置信度为 {confidence_text}{metric_text}，已加入 {review_owner_name(exam)} 的复核队列",
+            f"推理结果为 {spine_class_text(class_name)}，{classify_text}{metric_text}，已加入 {review_owner_name(exam)} 的复核队列",
             level="info",
             patient_id=exam.patient_id,
             exam_id=exam.id,
             ref={
                 "exam_id": exam.id,
+                "classification_mode": mode,
                 "spine_class": class_name,
                 "spine_class_text": spine_class_text(class_name),
                 "confidence": class_confidence,
@@ -2278,7 +2783,7 @@ def serialize_exam_detail(exam):
     link = ExamShareLink.query.filter_by(exam_id=exam.id, is_active=True).first()
     share = None
     if link:
-        share_url = url_for("public_case_page", token=link.token, _external=True)
+        share_url = build_public_url("public_case_page", token=link.token)
         share = {
             "id": link.id,
             "token": link.token,
@@ -2419,6 +2924,22 @@ def api_overview():
 
     today_start = datetime.combine(date.today(), datetime.min.time())
     tomorrow = today_start + timedelta(days=1)
+    reminder_days = max(1, to_int(app.config.get("FOLLOWUP_REMINDER_DAYS"), 7) or 7)
+    now = utcnow()
+    reminder_cutoff = now + timedelta(days=reminder_days)
+
+    total_schedules = FollowUpSchedule.query.count()
+    completed_schedules = FollowUpSchedule.query.filter(FollowUpSchedule.status == "done").count()
+    active_schedules = FollowUpSchedule.query.filter(FollowUpSchedule.status.in_(["todo", "overdue"])).count()
+    due_soon_schedules = FollowUpSchedule.query.filter(
+        FollowUpSchedule.status.in_(["todo", "overdue"]),
+        FollowUpSchedule.scheduled_at >= now,
+        FollowUpSchedule.scheduled_at <= reminder_cutoff,
+    ).count()
+    overdue_schedules = FollowUpSchedule.query.filter(
+        FollowUpSchedule.status.in_(["todo", "overdue"]),
+        FollowUpSchedule.scheduled_at < now,
+    ).count()
 
     stats = {
         "patient_total": Patient.query.count(),
@@ -2430,6 +2951,11 @@ def api_overview():
             FollowUpSchedule.status == "todo",
         ).count(),
         "alerts": Exam.query.filter(or_(Exam.severity_label == "重度", Exam.cobb_angle >= app.config["ALERT_COBB"])).count(),
+        "followup_active": active_schedules,
+        "followup_due_soon": due_soon_schedules,
+        "followup_overdue": overdue_schedules,
+        "followup_completion_rate": round((completed_schedules / total_schedules) * 100, 1) if total_schedules else None,
+        "followup_reminder_days": reminder_days,
     }
 
     system_status = gather_system_status()
@@ -2437,7 +2963,7 @@ def api_overview():
 
     feed = WorkEvent.query.order_by(WorkEvent.created_at.desc()).limit(60).all()
     schedules = (
-        FollowUpSchedule.query.filter(FollowUpSchedule.status == "todo")
+        FollowUpSchedule.query.filter(FollowUpSchedule.status.in_(["todo", "overdue"]))
         .order_by(FollowUpSchedule.scheduled_at.asc())
         .limit(50)
         .all()
@@ -2534,6 +3060,68 @@ def api_create_schedule():
     return api_ok({"item": serialize_schedule(row)}, message="日程已创建")
 
 
+@app.route("/api/schedules/<int:schedule_id>/complete", methods=["POST"])
+@login_required_api
+def api_complete_schedule(schedule_id):
+    row = db.session.get(FollowUpSchedule, schedule_id)
+    if not row:
+        return api_error("随访日程不存在", status=404, code="not_found")
+
+    patient = db.session.get(Patient, row.patient_id)
+    if not patient:
+        return api_error("患者不存在", status=404, code="not_found")
+
+    if row.status == "done":
+        return api_ok({"item": serialize_schedule(row)}, message="日程已完成")
+
+    row.status = "done"
+    row.completed_at = utcnow()
+    ensure_patient_followup_schedule(patient, base_at=row.completed_at)
+    db.session.commit()
+
+    create_work_event(
+        "schedule_completed",
+        "随访已完成",
+        f"{patient_display_name(patient)}：{row.title} 已完成",
+        level="info",
+        patient_id=patient.id,
+        ref={"schedule_id": row.id, "status": row.status},
+    )
+    return api_ok({"item": serialize_schedule(row)}, message="日程已完成")
+
+
+@app.route("/api/schedules/<int:schedule_id>/reschedule", methods=["POST"])
+@login_required_api
+def api_reschedule_schedule(schedule_id):
+    row = db.session.get(FollowUpSchedule, schedule_id)
+    if not row:
+        return api_error("随访日程不存在", status=404, code="not_found")
+
+    if row.status == "done":
+        return api_error("已完成的随访不能改期")
+
+    patient = db.session.get(Patient, row.patient_id)
+    if not patient:
+        return api_error("患者不存在", status=404, code="not_found")
+
+    data = request.get_json(silent=True) or {}
+    delta_days = to_int(data.get("delta_days"), None)
+    if delta_days is None or delta_days < 1:
+        return api_error("请提供有效的推迟天数")
+
+    previous_scheduled_at = row.scheduled_at
+    base_at = row.scheduled_at if row.scheduled_at and row.scheduled_at > utcnow() else utcnow()
+    row.scheduled_at = base_at + timedelta(days=delta_days)
+    row.status = "todo"
+    row.reminded_at = None
+    row.overdue_notified_at = None
+
+    create_followup_reschedule_notice(patient, row, previous_scheduled_at, delta_days)
+    db.session.commit()
+
+    return api_ok({"item": serialize_schedule(row)}, message="随访日期已调整")
+
+
 @app.route("/api/patients", methods=["GET"])
 @login_required_api
 def api_patients_list():
@@ -2568,10 +3156,13 @@ def api_patients_create():
         phone=(data.get("phone") or "").strip() or None,
         email=(data.get("email") or "").strip() or None,
         note=(data.get("note") or "").strip() or None,
+        followup_cycle_days=max(1, to_int(data.get("followup_cycle_days"), app.config.get("FOLLOWUP_DEFAULT_CYCLE_DAYS", 30)) or app.config.get("FOLLOWUP_DEFAULT_CYCLE_DAYS", 30)),
         portal_token=generate_token("pt_"),
         created_by_user_id=g.current_user.id,
     )
     db.session.add(patient)
+    db.session.flush()
+    ensure_patient_followup_schedule(patient)
     db.session.commit()
 
     serialized = serialize_patient_row(patient, get_user_patient_unread_map(g.current_user.id))
@@ -2637,6 +3228,15 @@ def api_patients_update(patient_id):
                 value = value.strip() or None
             setattr(patient, key, value)
 
+    if "followup_cycle_days" in data:
+        cycle_value = to_int(data.get("followup_cycle_days"), None)
+        if cycle_value is not None and cycle_value > 0:
+            patient.followup_cycle_days = cycle_value
+        elif patient.followup_cycle_days is None or patient.followup_cycle_days <= 0:
+            patient.followup_cycle_days = max(1, to_int(app.config.get("FOLLOWUP_DEFAULT_CYCLE_DAYS"), 30) or 30)
+
+    ensure_patient_followup_schedule(patient)
+
     db.session.commit()
     return api_ok({"patient": serialize_patient_row(patient, get_user_patient_unread_map(g.current_user.id))}, message="已保存")
 
@@ -2649,6 +3249,11 @@ def api_patient_detail(patient_id):
         return api_error("患者不存在", status=404, code="not_found")
 
     exams = Exam.query.filter_by(patient_id=patient.id).order_by(Exam.created_at.asc(), Exam.id.asc()).all()
+    schedules = (
+        FollowUpSchedule.query.filter_by(patient_id=patient.id)
+        .order_by(FollowUpSchedule.scheduled_at.asc(), FollowUpSchedule.id.asc())
+        .all()
+    )
     timeline = (
         WorkEvent.query.filter(or_(WorkEvent.patient_id == patient.id, WorkEvent.exam_id.in_([e.id for e in exams] or [0])))
         .order_by(WorkEvent.created_at.desc())
@@ -2658,12 +3263,12 @@ def api_patient_detail(patient_id):
     next_schedule = (
         FollowUpSchedule.query.filter(
             FollowUpSchedule.patient_id == patient.id,
-            FollowUpSchedule.status == "todo",
-            FollowUpSchedule.scheduled_at >= utcnow(),
+            FollowUpSchedule.status.in_(["todo", "overdue"]),
         )
         .order_by(FollowUpSchedule.scheduled_at.asc())
         .first()
     )
+    followup = build_followup_insights(patient, exams=exams, schedules=schedules, now=utcnow())
 
     detail = serialize_patient_row(patient, get_user_patient_unread_map(g.current_user.id))
     detail.update(
@@ -2674,6 +3279,8 @@ def api_patient_detail(patient_id):
             "timeline": [serialize_event(i) for i in timeline],
             "trend": [{"date": iso(e.created_at), "cobb_angle": e.cobb_angle} for e in exams if e.cobb_angle is not None],
             "exams": [serialize_exam_row(e) for e in exams[::-1]],
+            "schedules": [serialize_schedule(i) for i in schedules],
+            "followup": followup,
         }
     )
     return api_ok({"patient": detail})
@@ -2694,7 +3301,7 @@ def api_registration_create():
     db.session.add(sess)
     db.session.commit()
 
-    register_url = url_for("public_register_page", token=sess.token, _external=True)
+    register_url = build_public_url("public_register_page", token=sess.token)
     return api_ok(
         {
             "token": sess.token,
@@ -2728,7 +3335,7 @@ def api_registration_get(token):
                 "id": patient.id,
                 "name": patient.name,
                 "portal_token": patient.portal_token,
-                "portal_url": url_for("public_portal_page", token=patient.portal_token, _external=True),
+                "portal_url": build_public_url("public_portal_page", token=patient.portal_token),
             }
             if patient
             else None,
@@ -2788,7 +3395,12 @@ def api_registration_submit(token):
 
     patient = db.session.get(Patient, sess.patient_id) if sess.patient_id else None
     if not patient:
-        patient = Patient(name=name, portal_token=generate_token("pt_"), created_by_user_id=sess.created_by_user_id)
+        patient = Patient(
+            name=name,
+            portal_token=generate_token("pt_"),
+            created_by_user_id=sess.created_by_user_id,
+            followup_cycle_days=max(1, to_int(app.config.get("FOLLOWUP_DEFAULT_CYCLE_DAYS"), 30) or 30),
+        )
         db.session.add(patient)
         db.session.flush()
 
@@ -2798,6 +3410,13 @@ def api_registration_submit(token):
     patient.phone = (state.get("phone") or "").strip() or None
     patient.email = (state.get("email") or "").strip() or None
     patient.note = (state.get("note") or "").strip() or None
+    cycle_value = to_int(state.get("followup_cycle_days"), None)
+    if cycle_value is not None and cycle_value > 0:
+        patient.followup_cycle_days = cycle_value
+    elif patient.followup_cycle_days is None or patient.followup_cycle_days <= 0:
+        patient.followup_cycle_days = max(1, to_int(app.config.get("FOLLOWUP_DEFAULT_CYCLE_DAYS"), 30) or 30)
+
+    ensure_patient_followup_schedule(patient)
 
     sess.patient_id = patient.id
     sess.status = "submitted"
@@ -2812,7 +3431,7 @@ def api_registration_submit(token):
             "type": "form_submit",
             "actor_name": actor,
             "form_state": state,
-            "patient": {"id": patient.id, "name": patient.name, "portal_url": url_for("public_portal_page", token=patient.portal_token, _external=True)},
+            "patient": {"id": patient.id, "name": patient.name, "portal_url": build_public_url("public_portal_page", token=patient.portal_token)},
             "ts": iso(utcnow()),
         },
     )
@@ -2824,7 +3443,7 @@ def api_registration_submit(token):
         {
             "patient": patient_serialized,
             "portal_token": patient.portal_token,
-            "portal_url": url_for("public_portal_page", token=patient.portal_token, _external=True),
+            "portal_url": build_public_url("public_portal_page", token=patient.portal_token),
         },
         message="登记已提交",
     )
@@ -2840,6 +3459,13 @@ def api_exam_upload_doctor(patient_id):
     file_obj = request.files.get("file")
     if not file_obj:
         return api_error("请选择影像文件")
+
+    classification_mode = str(request.form.get("classification_mode") or "ai").strip().lower()
+    manual_spine_class = str(request.form.get("manual_spine_class") or "").strip()
+    if classification_mode not in {"ai", "manual"}:
+        return api_error("classification_mode 参数无效")
+    if classification_mode == "manual" and normalize_spine_class(manual_spine_class) is None:
+        return api_error("请选择有效的手动分类类型")
 
     try:
         image_path = save_upload(file_obj)
@@ -2858,7 +3484,7 @@ def api_exam_upload_doctor(patient_id):
     db.session.add(exam)
     db.session.commit()
 
-    run_remote_inference(exam)
+    run_remote_inference(exam, classification_mode=classification_mode, manual_spine_class=manual_spine_class)
     pic_name = Path(exam.image_path).name if exam.image_path else "影像"
     owner_name = review_owner_name(exam)
     create_work_event(
@@ -2932,6 +3558,54 @@ def api_review_submit(exam_id):
     return api_ok({"exam": serialize_exam_detail(exam)}, message="复核结果已保存")
 
 
+@app.route("/api/reviews/<int:exam_id>/reclassify", methods=["POST"])
+@login_required_api
+def api_review_reclassify(exam_id):
+    exam = db.session.get(Exam, exam_id)
+    if not exam:
+        return api_error("检查不存在", status=404, code="not_found")
+    if not can_user_access_exam_review(g.current_user, exam):
+        return api_error("无权限重推理该复核记录", status=403, code="forbidden")
+
+    data = request.get_json(silent=True) or {}
+    manual_spine_class = str(data.get("manual_spine_class") or "").strip()
+    normalized_class = normalize_spine_class(manual_spine_class)
+    if normalized_class is None:
+        return api_error("请选择有效的手动分类类型")
+    if exam.status == "inferring":
+        return api_error("该影像正在推理中，请稍后再试")
+
+    exam.status = "inferring"
+    exam.reviewed_by_user_id = None
+    exam.reviewed_at = None
+    db.session.commit()
+
+    create_work_event(
+        "reclassify_start",
+        "已触发手动分类重推理",
+        f"{patient_display_name(exam.patient)} 的影像按 {spine_class_text(normalized_class)} 重新推理",
+        level="info",
+        patient_id=exam.patient_id,
+        exam_id=exam.id,
+        ref={
+            "manual_spine_class": normalized_class,
+            "manual_spine_class_text": spine_class_text(normalized_class),
+            "operator": g.current_user.display_name,
+        },
+    )
+
+    run_remote_inference(exam, classification_mode="manual", manual_spine_class=normalized_class)
+    refreshed_exam = db.session.get(Exam, exam.id)
+    return api_ok(
+        {
+            "exam": serialize_exam_detail(refreshed_exam),
+            "manual_spine_class": normalized_class,
+            "manual_spine_class_text": spine_class_text(normalized_class),
+        },
+        message="已按手动分类完成重推理",
+    )
+
+
 @app.route("/api/reviews/<int:exam_id>", methods=["DELETE"])
 @login_required_api
 def api_review_delete(exam_id):
@@ -3002,7 +3676,7 @@ def api_review_share_link(exam_id):
         return api_error("无权限分享该复核记录", status=403, code="forbidden")
 
     link = ensure_share_link(exam.id, g.current_user.id)
-    share_url = url_for("public_case_page", token=link.token, _external=True)
+    share_url = build_public_url("public_case_page", token=link.token)
     logs = ShareAccessLog.query.filter_by(share_link_id=link.id).order_by(ShareAccessLog.accessed_at.desc()).limit(50).all()
 
     create_work_event("case_shared", "病例链接已创建", f"{patient_display_name(exam.patient)} 的影像可分享讨论", patient_id=exam.patient_id, exam_id=exam.id, ref={"share_token": link.token})
@@ -3107,7 +3781,7 @@ def api_review_share_user(exam_id):
         return api_error("不能分享给自己")
 
     link = ensure_share_link(exam.id, g.current_user.id)
-    share_url = url_for("public_case_page", token=link.token, _external=True)
+    share_url = build_public_url("public_case_page", token=link.token)
     conv = get_or_create_private_conversation(g.current_user.id, target.id)
 
     db.session.add(CaseShareToUser(exam_id=exam.id, from_user_id=g.current_user.id, to_user_id=target.id))
@@ -3640,7 +4314,7 @@ def api_questionnaire_assign(qid):
 
         try:
             conv = get_or_create_patient_conversation(patient)
-            share_url = url_for("public_questionnaire_page", token=row.token, _external=True)
+            share_url = build_public_url("public_questionnaire_page", token=row.token)
             msg = Message(
                 conversation_id=conv.id,
                 sender_kind="user",
@@ -3683,7 +4357,7 @@ def api_questionnaire_assign(qid):
                     "patient_id": i.patient_id,
                     "patient_name": patient_display_name(db.session.get(Patient, i.patient_id)),
                     "token": i.token,
-                    "url": url_for("public_questionnaire_page", token=i.token, _external=True),
+                    "url": build_public_url("public_questionnaire_page", token=i.token),
                     "status": i.status,
                 }
                 for i in created
@@ -4061,7 +4735,7 @@ def api_public_portal_get(token):
                     "sent_at": iso(i.sent_at),
                     "completed_at": iso(i.completed_at),
                     "questionnaire_title": db.session.get(Questionnaire, i.questionnaire_id).title if db.session.get(Questionnaire, i.questionnaire_id) else "问卷",
-                    "url": url_for("public_questionnaire_page", token=i.token, _external=True),
+                    "url": build_public_url("public_questionnaire_page", token=i.token),
                 }
                 for i in rows
             ],
@@ -4159,6 +4833,13 @@ def api_public_portal_exam(token):
     if not file_obj:
         return api_error("请选择影像文件")
 
+    classification_mode = str(request.form.get("classification_mode") or "ai").strip().lower()
+    manual_spine_class = str(request.form.get("manual_spine_class") or "").strip()
+    if classification_mode not in {"ai", "manual"}:
+        return api_error("classification_mode 参数无效")
+    if classification_mode == "manual" and normalize_spine_class(manual_spine_class) is None:
+        return api_error("请选择有效的手动分类类型")
+
     try:
         image_path = save_upload(file_obj)
     except ValueError as exc:
@@ -4175,7 +4856,7 @@ def api_public_portal_exam(token):
     db.session.add(exam)
     db.session.commit()
 
-    run_remote_inference(exam)
+    run_remote_inference(exam, classification_mode=classification_mode, manual_spine_class=manual_spine_class)
     pic_name = Path(exam.image_path).name if exam.image_path else "影像"
     owner_name = review_owner_name(exam)
     uploader_name = exam.uploaded_by_label or patient_display_name(patient)
@@ -4703,9 +5384,27 @@ def api_public_portal_ai_messages(token):
 
 
 def ensure_schema_columns():
+    patient_rows = db.session.execute(text("PRAGMA table_info(wb_patients)")).mappings().all()
+    patient_columns = {str(r.get("name") or "") for r in patient_rows}
+    updated = False
+    if "followup_cycle_days" not in patient_columns:
+        db.session.execute(text("ALTER TABLE wb_patients ADD COLUMN followup_cycle_days INTEGER"))
+        updated = True
+
+    schedule_rows = db.session.execute(text("PRAGMA table_info(wb_schedules)")).mappings().all()
+    schedule_columns = {str(r.get("name") or "") for r in schedule_rows}
+    if "reminded_at" not in schedule_columns:
+        db.session.execute(text("ALTER TABLE wb_schedules ADD COLUMN reminded_at DATETIME"))
+        updated = True
+    if "overdue_notified_at" not in schedule_columns:
+        db.session.execute(text("ALTER TABLE wb_schedules ADD COLUMN overdue_notified_at DATETIME"))
+        updated = True
+    if "completed_at" not in schedule_columns:
+        db.session.execute(text("ALTER TABLE wb_schedules ADD COLUMN completed_at DATETIME"))
+        updated = True
+
     rows = db.session.execute(text("PRAGMA table_info(wb_exams)")).mappings().all()
     columns = {str(r.get("name") or "") for r in rows}
-    updated = False
     if "inference_image_path" not in columns:
         db.session.execute(text("ALTER TABLE wb_exams ADD COLUMN inference_image_path VARCHAR(256)"))
         updated = True
@@ -4758,6 +5457,7 @@ with app.app_context():
     ensure_schema_columns()
     bootstrap_admin()
     seed_screening_scales()
+    start_followup_sweeper()
 
 
 if __name__ == "__main__":

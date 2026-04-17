@@ -19,6 +19,7 @@
       font-family: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
       background: var(--bg);
       color: var(--ink);
+      overflow-x: hidden;
     }
     .wrap {
       max-width: 900px;
@@ -128,6 +129,54 @@
       font-weight: 700;
       letter-spacing: .01em;
       text-align: center;
+    }
+
+    @media (max-width: 760px) {
+      .wrap {
+        margin: 10px auto;
+        padding: 0 10px 14px;
+        gap: 10px;
+      }
+
+      .card,
+      .page-footer {
+        border-radius: 14px;
+        padding: 12px;
+      }
+
+      .head-title {
+        font-size: 22px;
+      }
+
+      .q {
+        padding: 12px;
+        gap: 12px;
+      }
+
+      .q-title {
+        font-size: 16px;
+      }
+
+      .q-option {
+        min-height: 44px;
+        font-size: 14px;
+        padding: 8px 10px;
+      }
+
+      textarea {
+        min-height: 120px;
+        font-size: 16px;
+      }
+
+      .submit-btn {
+        width: 100%;
+        min-height: 46px;
+        font-size: 15px;
+      }
+
+      .page-footer {
+        font-size: 11px;
+      }
     }
   </style>
 </head>

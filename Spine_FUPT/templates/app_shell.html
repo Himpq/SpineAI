@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v='spine20260216c') }}">
-  <script src="{{ url_for('static', filename='js/app.js', v='spine20260216c') }}" defer></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v='spine20260417w') }}">
+  <script src="{{ url_for('static', filename='js/app.js', v='spine20260417w') }}" defer></script>
 </head>
 <body>
   <div id="login-screen" class="login-wrapper">
@@ -124,10 +124,12 @@
       </div>
     </nav>
 
+    <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="关闭侧边栏" aria-hidden="true"></button>
+
     <main class="main-content">
       <header class="chat-header">
         <div class="header-left">
-          <button class="btn-icon" id="toggle-sidebar" type="button" aria-label="toggle sidebar">
+          <button class="btn-icon" id="toggle-sidebar" type="button" aria-label="toggle sidebar" aria-controls="sidebar" aria-expanded="false">
             <i class="fa-solid fa-bars"></i>
           </button>
         </div>
@@ -145,27 +147,39 @@
             </div>
           </div>
           <div class="overview-metric">
-            <span>患者数</span>
-            <strong id="overview-patient-count">-</strong>
+            <span>随访中</span>
+            <strong id="overview-followup-active">-</strong>
           </div>
           <div class="overview-metric">
-            <span>待复核任务数</span>
-            <strong id="overview-pending-count">-</strong>
+            <span>7天内到期</span>
+            <strong id="overview-followup-due-soon">-</strong>
+          </div>
+          <div class="overview-metric">
+            <span>待处理任务</span>
+            <strong id="overview-task-total">-</strong>
           </div>
         </div>
 
         <div id="overview-lists" class="overview-lists">
-          <section class="overview-card todo-card">
+          <section class="overview-card followup-card">
             <header>
-              <h3>待办任务</h3>
+              <div class="overview-card-headline">
+                <h3>随访提醒</h3>
+                <p id="overview-followup-card-desc" class="overview-card-desc">--</p>
+              </div>
+              <span id="overview-followup-card-badge" class="overview-card-badge">--</span>
             </header>
-            <ul id="overview-todo-list" class="overview-list"></ul>
+            <ul id="overview-followup-list" class="overview-list"></ul>
           </section>
-          <section class="overview-card info-card">
+          <section class="overview-card task-card">
             <header>
-              <h3>信息提醒</h3>
+              <div class="overview-card-headline">
+                <h3>任务提醒</h3>
+                <p id="overview-task-card-desc" class="overview-card-desc">--</p>
+              </div>
+              <span id="overview-task-card-badge" class="overview-card-badge">--</span>
             </header>
-            <ul id="overview-reminder-list" class="overview-list"></ul>
+            <ul id="overview-task-list" class="overview-list"></ul>
           </section>
         </div>
 
@@ -228,10 +242,6 @@
               <header><h3>最近推理错误</h3></header>
               <ul id="status-error-list" class="status-list"></ul>
             </section>
-            <section class="status-box">
-              <header><h3>推理返回格式（示例）</h3></header>
-              <pre id="status-infer-format" class="status-format"></pre>
-            </section>
           </div>
         </div>
 
@@ -254,7 +264,7 @@
 
           <section id="patients-detail-layer" class="patients-layer patients-layer-detail hidden">
             <header class="patients-detail-head">
-              <button id="patients-back-btn" class="patients-back-btn" type="button">
+              <button id="patients-back-btn" class="patients-back-btn" type="button" aria-label="返回上一级">
                 <i class="fa-solid fa-arrow-left"></i>
                 <span>返回上一级</span>
               </button>
@@ -268,7 +278,7 @@
 
           <section id="patients-register-layer" class="patients-layer patients-layer-register hidden">
             <header class="patients-detail-head">
-              <button id="patients-register-back-btn" class="patients-back-btn" type="button">
+              <button id="patients-register-back-btn" class="patients-back-btn" type="button" aria-label="返回上一级">
                 <i class="fa-solid fa-arrow-left"></i>
                 <span>返回上一级</span>
               </button>
@@ -348,6 +358,12 @@
           </aside>
 
           <section class="reviews-viewer-pane">
+            <header class="reviews-viewer-head">
+              <button id="reviews-mobile-back-btn" type="button" class="reviews-mobile-back-btn hidden" title="返回复核列表" aria-label="返回复核列表">
+                <i class="fa-solid fa-arrow-left"></i>
+              </button>
+              <h3 class="reviews-viewer-title">复核影像</h3>
+            </header>
             <div id="reviews-viewer" class="reviews-viewer">
               <div class="reviews-toolbar-float">
                 <button type="button" class="review-tool-btn" data-review-tool="zoom-in" title="放大（占位）">
@@ -393,19 +409,31 @@
 
           <section id="questionnaires-create-layer" class="questionnaires-create-layer hidden">
             <header class="questionnaires-create-head">
-              <button id="questionnaires-create-back-btn" class="patients-back-btn" type="button">
+              <button id="questionnaires-create-back-btn" class="patients-back-btn" type="button" aria-label="返回上一级">
                 <i class="fa-solid fa-arrow-left"></i>
                 <span>返回上一级</span>
               </button>
+              <div class="questionnaires-create-head-tabs">
+                <div class="questionnaire-create-tabs" role="tablist" aria-label="问卷编辑步骤">
+                  <button id="questionnaire-create-tab-basic" type="button" class="questionnaire-create-tab active" data-create-tab="basic">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <span>问卷基本信息</span>
+                  </button>
+                  <button id="questionnaire-create-tab-questions" type="button" class="questionnaire-create-tab" data-create-tab="questions">
+                    <i class="fa-solid fa-list-check"></i>
+                    <span>题目列表</span>
+                  </button>
+                </div>
+              </div>
               <div class="questionnaires-create-head-actions">
-                <button id="questionnaire-save-btn" type="button" class="questionnaire-add-btn primary">
+                <button id="questionnaire-save-btn" type="button" class="questionnaire-add-btn primary" aria-label="保存问卷" title="保存问卷">
                   <i class="fa-solid fa-floppy-disk"></i><span>保存问卷</span>
                 </button>
               </div>
             </header>
             <div class="questionnaires-create-body">
               <div class="questionnaire-builder">
-                <section class="questionnaire-builder-head-card">
+                <section id="questionnaire-create-basic-panel" class="questionnaire-builder-head-card questionnaire-create-panel" data-create-tab-panel="basic">
                   <label class="questionnaire-field">
                     <span>问卷标题</span>
                     <input id="questionnaire-title-input" type="text" placeholder="请输入问卷标题">
@@ -426,7 +454,7 @@
 
                 </section>
 
-                <section class="questionnaire-builder-questions-card">
+                <section id="questionnaire-create-questions-panel" class="questionnaire-builder-questions-card questionnaire-create-panel hidden" data-create-tab-panel="questions">
                   <header><h3>题目列表</h3></header>
                   <div id="questionnaire-questions-list" class="questionnaire-questions-list"></div>
                 </section>
@@ -436,7 +464,7 @@
 
           <section id="questionnaires-detail-layer" class="questionnaires-create-layer hidden">
             <header class="questionnaires-create-head">
-              <button id="questionnaires-detail-back-btn" class="patients-back-btn" type="button">
+              <button id="questionnaires-detail-back-btn" class="patients-back-btn" type="button" aria-label="返回上一级">
                 <i class="fa-solid fa-arrow-left"></i>
                 <span>返回上一级</span>
               </button>
@@ -490,7 +518,9 @@
               </label>
               <footer>
                 <button id="questionnaire-detail-settings-cancel-btn" type="button" class="questionnaire-add-btn">取消</button>
-                <button id="questionnaire-detail-settings-save-btn" type="button" class="questionnaire-add-btn primary">保存</button>
+                <button id="questionnaire-detail-settings-save-btn" type="button" class="questionnaire-add-btn primary" aria-label="保存" title="保存">
+                  <i class="fa-solid fa-floppy-disk"></i><span>保存</span>
+                </button>
               </footer>
             </div>
           </section>
@@ -536,7 +566,9 @@
               </label>
               <footer>
                 <button id="questionnaire-constraint-cancel-btn" type="button" class="questionnaire-add-btn">取消</button>
-                <button id="questionnaire-constraint-save-btn" type="button" class="questionnaire-add-btn primary">保存</button>
+                <button id="questionnaire-constraint-save-btn" type="button" class="questionnaire-add-btn primary" aria-label="保存" title="保存">
+                  <i class="fa-solid fa-floppy-disk"></i><span>保存</span>
+                </button>
               </footer>
             </div>
           </section>
@@ -558,6 +590,9 @@
             </aside>
             <section class="questionnaires-chat-main">
               <div class="questionnaires-chat-titlebar">
+                <button id="questionnaires-chat-back-btn" type="button" class="questionnaires-chat-back-btn hidden" title="返回聊天列表" aria-label="返回聊天列表">
+                  <i class="fa-solid fa-arrow-left"></i>
+                </button>
                 <button id="questionnaires-chat-title-btn" type="button" class="questionnaires-chat-title-btn" disabled>
                   请选择聊天对象
                 </button>
@@ -603,6 +638,65 @@
     </main>
   </div>
 
+  <section id="upload-classify-modal" class="upload-classify-modal hidden">
+    <div class="upload-classify-dialog">
+      <header class="upload-classify-head">
+        <h3>上传分类选择</h3>
+        <button id="upload-classify-close-btn" type="button" class="upload-classify-close" title="关闭" aria-label="关闭">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </header>
+      <p class="upload-classify-desc">请选择上传后使用的分类方式。若手动指定，将跳过自动 classify，直接按你选择的类型推理。</p>
+      <div class="upload-classify-mode-grid">
+        <label class="upload-classify-mode-item">
+          <input type="radio" name="upload-classify-mode" value="ai" checked>
+          <span>AI 自动分类</span>
+        </label>
+        <label class="upload-classify-mode-item">
+          <input type="radio" name="upload-classify-mode" value="manual">
+          <span>手动选择分类</span>
+        </label>
+      </div>
+      <div id="upload-manual-class-group" class="upload-classify-manual hidden">
+        <label for="upload-manual-class-select">手动分类类型</label>
+        <select id="upload-manual-class-select">
+          <option value="">请选择</option>
+          <option value="cervical">颈椎</option>
+          <option value="lumbar">腰椎</option>
+          <option value="pelvis">骨盆</option>
+          <option value="clavicle">锁骨/T1</option>
+        </select>
+      </div>
+      <footer class="upload-classify-foot">
+        <button id="upload-classify-cancel-btn" type="button" class="questionnaire-add-btn">取消</button>
+        <button id="upload-classify-confirm-btn" type="button" class="questionnaire-add-btn primary">确认并上传</button>
+      </footer>
+    </div>
+  </section>
+
+  <section id="review-reclassify-modal" class="review-reclassify-modal hidden">
+    <div class="review-reclassify-dialog">
+      <header>
+        <h3>手动分类重推理</h3>
+      </header>
+      <p id="review-reclassify-modal-text">请选择分类方案后重新推理。此操作不会调用 AI 自动分类。</p>
+      <label class="review-reclassify-field" for="review-reclassify-class-select">
+        <span>分类方案</span>
+        <select id="review-reclassify-class-select">
+          <option value="">请选择</option>
+          <option value="cervical">颈椎</option>
+          <option value="lumbar">腰椎</option>
+          <option value="pelvis">骨盆</option>
+          <option value="clavicle">锁骨/T1</option>
+        </select>
+      </label>
+      <footer>
+        <button id="review-reclassify-cancel-btn" type="button" class="questionnaire-add-btn">取消</button>
+        <button id="review-reclassify-confirm-btn" type="button" class="questionnaire-add-btn primary">确认并重推理</button>
+      </footer>
+    </div>
+  </section>
+
   <section id="review-delete-modal" class="review-delete-modal hidden">
     <div class="review-delete-dialog">
       <header>
@@ -612,6 +706,41 @@
       <footer>
         <button id="review-delete-cancel-btn" type="button" class="questionnaire-add-btn">取消</button>
         <button id="review-delete-confirm-btn" type="button" class="questionnaire-add-btn danger">确认删除</button>
+      </footer>
+    </div>
+  </section>
+
+  <section id="patient-followup-reschedule-modal" class="patient-followup-modal hidden">
+    <div class="patient-followup-modal-panel">
+      <header class="patient-followup-modal-head">
+        <div>
+          <h3 id="patient-followup-reschedule-title">随访改期</h3>
+          <div id="patient-followup-reschedule-meta" class="patient-followup-modal-meta">当前时间：--</div>
+        </div>
+        <button id="patient-followup-reschedule-close-btn" type="button" class="questionnaire-head-icon-btn" title="关闭">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </header>
+
+      <div class="patient-followup-modal-options">
+        <button type="button" class="patient-followup-modal-option" data-followup-reschedule-days="1">推迟 1 天</button>
+        <button type="button" class="patient-followup-modal-option" data-followup-reschedule-days="7">推迟 7 天</button>
+        <button type="button" class="patient-followup-modal-option" data-followup-reschedule-days="14">推迟 14 天</button>
+      </div>
+
+      <div class="patient-followup-modal-form">
+        <label class="questionnaire-field">
+          <span>自定义推迟天数</span>
+          <div class="patient-followup-modal-form-row">
+            <input id="patient-followup-reschedule-input" type="number" min="1" max="365" step="1" inputmode="numeric" placeholder="输入天数">
+            <button id="patient-followup-reschedule-submit-btn" type="button" class="questionnaire-add-btn primary">确认</button>
+          </div>
+        </label>
+        <div id="patient-followup-reschedule-hint" class="patient-followup-modal-hint">点击快捷按钮直接推迟，或输入自定义天数后再确认。</div>
+      </div>
+
+      <footer class="patient-followup-modal-footer">
+        <button id="patient-followup-reschedule-cancel-btn" type="button" class="questionnaire-add-btn">取消</button>
       </footer>
     </div>
   </section>

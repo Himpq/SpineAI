@@ -19,18 +19,25 @@
     }
 
     * { box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      min-height: 100%;
+    }
     body {
       margin: 0;
       font-family: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
       background: var(--bg);
       color: var(--ink);
       overflow: hidden;
+      -webkit-text-size-adjust: 100%;
+      overscroll-behavior: none;
     }
 
     .portal-shell {
       width: 100%;
-      height: 100vh;
+      min-height: 100vh;
+      height: 100dvh;
       display: flex;
     }
 
@@ -138,10 +145,20 @@
     .portal-main {
       flex: 1;
       min-width: 0;
-      height: 100vh;
+      min-height: 100vh;
+      height: 100dvh;
       display: flex;
       flex-direction: column;
       background: #fff;
+    }
+
+    .portal-sidebar-backdrop {
+      display: none;
+    }
+
+    .portal-sidebar-toggle,
+    .portal-sidebar-close {
+      display: none;
     }
 
     .portal-header {
@@ -795,19 +812,201 @@
       cursor: pointer;
     }
 
+    .portal-upload-classify-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.56);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1002;
+      padding: 16px;
+    }
+
+    .portal-upload-classify-modal.open { display: flex; }
+
+    .portal-upload-classify-dialog {
+      width: min(460px, 100%);
+      border: 1px solid #d8dde4;
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.28);
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .portal-upload-classify-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .portal-upload-classify-head h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .portal-upload-classify-close {
+      width: 30px;
+      height: 30px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #fff;
+      color: #111827;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .portal-upload-classify-mode {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .portal-upload-classify-item {
+      border: 1px solid #d7dbe0;
+      border-radius: 10px;
+      background: #f8fafc;
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #0f172a;
+    }
+
+    .portal-upload-manual {
+      display: grid;
+      gap: 8px;
+    }
+
+    .portal-upload-manual label {
+      font-size: 12px;
+      color: #334155;
+    }
+
+    .portal-upload-manual select {
+      min-height: 34px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #fff;
+      color: #0f172a;
+      font-size: 13px;
+      padding: 0 10px;
+    }
+
+    .portal-upload-classify-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
     @media (max-width: 980px) {
-      .portal-shell { flex-direction: column; }
+      .portal-shell { display: block; }
       .portal-sidebar {
-        width: 100%;
+        position: fixed;
+        inset: 0 auto 0 0;
+        width: min(68vw, 260px);
+        height: 100dvh;
         border-right: 0;
-        border-bottom: 1px solid #111;
+        border-bottom: 0;
+        transform: translateX(-100%);
+        transition: transform 0.24s ease;
+        z-index: 40;
+        display: flex;
+        flex-direction: column;
+        box-shadow: none;
       }
-      .sidebar-head { min-height: 56px; }
-      .menu-list { grid-auto-flow: column; overflow-x: auto; padding-bottom: 10px; }
-      .menu-item { min-width: 118px; }
-      .sidebar-foot { display: none; }
-      .portal-main { height: auto; }
-      .portal-stage { padding: 12px; }
+      .portal-sidebar.mobile-open {
+        transform: translateX(0);
+        box-shadow: 16px 0 28px rgba(0, 0, 0, 0.28);
+      }
+      .portal-sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        display: none;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: rgba(2, 6, 23, 0.56);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.24s ease;
+        z-index: 30;
+      }
+      .portal-sidebar-backdrop.active {
+        display: block;
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .portal-sidebar-toggle,
+      .portal-sidebar-close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        cursor: pointer;
+      }
+      .portal-sidebar-toggle {
+        background: var(--panel);
+        color: var(--ink);
+      }
+      .sidebar-head {
+        min-height: 60px;
+        padding-right: 12px;
+        justify-content: space-between;
+      }
+      .sidebar-sub { padding: 0 16px 12px; }
+      .menu-list {
+        grid-auto-flow: row;
+        grid-template-columns: 1fr;
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 0 12px 14px;
+      }
+      .menu-item {
+        min-width: 0;
+        min-height: 46px;
+        justify-content: flex-start;
+        padding: 0 14px;
+      }
+      .sidebar-foot { display: block; margin-top: auto; }
+      .portal-main { min-height: 100dvh; height: 100dvh; }
+      .portal-header {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        min-height: 60px;
+        padding: 0 12px;
+        gap: 8px;
+      }
+      .header-left { flex: 0 0 48px; }
+      .header-center { min-width: 0; }
+      .header-title {
+        font-size: 15px;
+        line-height: 1.35;
+      }
+      .header-right { display: none; }
+      .portal-stage {
+        padding: 12px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .panel { gap: 12px; }
+      .panel-head { padding: 14px 16px; }
+      .panel-head h2 { font-size: 18px; }
+      .panel-scroll { padding: 0 0 14px; gap: 12px; }
       .list-upload,
       .list-timeline { grid-template-columns: 1fr; }
       .upload-item { grid-template-columns: 1fr; }
@@ -818,16 +1017,42 @@
       .home-main { grid-template-columns: 1fr; }
       .home-side { grid-template-rows: auto auto; }
       .patient-profile.compact { max-width: none; }
-      .portal-chat-view { grid-template-columns: 1fr; height: auto; }
-      .portal-chat-list-pane { grid-template-rows: auto minmax(0, 240px); }
+      .portal-chat-view {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(220px, 0.72fr) minmax(0, 1fr);
+        height: auto;
+      }
+      .portal-chat-list-pane { grid-template-rows: auto minmax(0, 1fr); }
+      .portal-chat-list { max-height: 220px; }
+      .portal-chat-main { min-height: 280px; }
+      .portal-chat-messages { padding: 12px; }
+      .portal-chat-input-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+      .portal-chat-input-row input,
+      .portal-chat-input-row button,
+      .btn,
+      .menu-item {
+        min-height: 44px;
+      }
+      input,
+      textarea,
+      button {
+        font-size: 16px;
+      }
+      .upload-actions .btn { width: 100%; }
+      .portal-upload-classify-mode { grid-template-columns: minmax(0, 1fr); }
+      .portal-upload-classify-actions { display: grid; grid-template-columns: minmax(0, 1fr); }
+      .portal-upload-classify-actions .btn { width: 100%; }
     }
   </style>
 </head>
 <body>
 <div class="portal-shell">
-  <aside class="portal-sidebar">
+  <aside id="portal-sidebar" class="portal-sidebar">
     <div class="sidebar-head">
       <div class="brand">Spine FUPT.</div>
+      <button id="portal-sidebar-close" type="button" class="btn-icon portal-sidebar-close" aria-label="关闭菜单">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
     </div>
     <div class="sidebar-sub">患者入口</div>
     <div class="menu-list" id="portal-menu">
@@ -839,9 +1064,15 @@
     <div class="sidebar-foot">Portal</div>
   </aside>
 
+  <button id="portal-sidebar-backdrop" class="portal-sidebar-backdrop" type="button" aria-label="关闭菜单" aria-hidden="true"></button>
+
   <main class="portal-main">
     <header class="portal-header">
-      <div class="header-left"></div>
+      <div class="header-left">
+        <button id="portal-sidebar-toggle" type="button" class="btn-icon portal-sidebar-toggle" aria-label="打开菜单" aria-controls="portal-sidebar" aria-expanded="false">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+      </div>
       <div class="header-center">
         <div id="portal-header-title" class="header-title">Spine FUPT · 患者中心 · 首页</div>
       </div>
@@ -948,6 +1179,40 @@
   <img id="modal-image" alt="影像预览">
 </div>
 
+<section id="portal-upload-classify-modal" class="portal-upload-classify-modal" aria-hidden="true">
+  <div class="portal-upload-classify-dialog">
+    <header class="portal-upload-classify-head">
+      <h3>上传分类选择</h3>
+      <button id="portal-upload-classify-close" class="portal-upload-classify-close" type="button" aria-label="关闭">×</button>
+    </header>
+    <div class="status">请选择上传后的分类方式。手动模式将跳过自动 classify。</div>
+    <div class="portal-upload-classify-mode">
+      <label class="portal-upload-classify-item">
+        <input type="radio" name="portal-upload-mode" value="ai" checked>
+        <span>AI 自动分类</span>
+      </label>
+      <label class="portal-upload-classify-item">
+        <input type="radio" name="portal-upload-mode" value="manual">
+        <span>手动选择分类</span>
+      </label>
+    </div>
+    <div id="portal-upload-manual-group" class="portal-upload-manual" style="display:none;">
+      <label for="portal-upload-manual-select">手动分类类型</label>
+      <select id="portal-upload-manual-select">
+        <option value="">请选择</option>
+        <option value="cervical">颈椎</option>
+        <option value="lumbar">腰椎</option>
+        <option value="pelvis">骨盆</option>
+        <option value="clavicle">锁骨/T1</option>
+      </select>
+    </div>
+    <footer class="portal-upload-classify-actions">
+      <button id="portal-upload-classify-cancel" class="btn" type="button">取消</button>
+      <button id="portal-upload-classify-confirm" class="btn" type="button">确认并上传</button>
+    </footer>
+  </div>
+</section>
+
 <script>
 const token = "{{ token }}";
 const patientName = document.getElementById("patient-name");
@@ -973,6 +1238,16 @@ const portalChatMessages = document.getElementById("portal-chat-messages");
 const portalChatInput = document.getElementById("portal-chat-input");
 const portalChatSend = document.getElementById("portal-chat-send");
 const portalChatTitle = document.getElementById("portal-chat-title");
+const portalSidebar = document.getElementById("portal-sidebar");
+const portalSidebarToggle = document.getElementById("portal-sidebar-toggle");
+const portalSidebarClose = document.getElementById("portal-sidebar-close");
+const portalSidebarBackdrop = document.getElementById("portal-sidebar-backdrop");
+const portalUploadClassifyModal = document.getElementById("portal-upload-classify-modal");
+const portalUploadClassifyClose = document.getElementById("portal-upload-classify-close");
+const portalUploadClassifyCancel = document.getElementById("portal-upload-classify-cancel");
+const portalUploadClassifyConfirm = document.getElementById("portal-upload-classify-confirm");
+const portalUploadManualGroup = document.getElementById("portal-upload-manual-group");
+const portalUploadManualSelect = document.getElementById("portal-upload-manual-select");
 let latestUploads = [];
 
 const chatState = {
@@ -989,6 +1264,27 @@ function updatePortalChatUnreadBadge() {
   const n = Math.max(0, Number(chatState.unread || 0));
   portalChatUnreadBadge.textContent = String(n);
   portalChatUnreadBadge.classList.toggle("hidden", n <= 0);
+}
+
+function isNarrowPortalViewport() {
+  return window.matchMedia("(max-width: 980px)").matches;
+}
+
+function setPortalSidebarOpen(open) {
+  if (!portalSidebar) return;
+  const shouldOpen = Boolean(open) && isNarrowPortalViewport();
+  portalSidebar.classList.toggle("mobile-open", shouldOpen);
+  portalSidebar.toggleAttribute("inert", isNarrowPortalViewport() && !shouldOpen);
+  portalSidebarBackdrop?.classList.toggle("active", shouldOpen);
+  if (portalSidebarBackdrop) {
+    portalSidebarBackdrop.setAttribute("aria-hidden", shouldOpen ? "false" : "true");
+  }
+  portalSidebarToggle?.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+  document.body.classList.toggle("portal-sidebar-open", shouldOpen);
+}
+
+function closePortalSidebar() {
+  setPortalSidebarOpen(false);
 }
 
 function api(path, options = {}) {
@@ -1025,6 +1321,81 @@ function clearUploadProgress() {
   if (uploadProgressBar) {
     uploadProgressBar.style.width = "0%";
   }
+}
+
+function askPortalUploadClassification() {
+  const modeInputs = Array.from(document.querySelectorAll("input[name='portal-upload-mode']"));
+  if (!portalUploadClassifyModal || !modeInputs.length || !portalUploadClassifyConfirm) {
+    return Promise.resolve({ classificationMode: "ai", manualSpineClass: "" });
+  }
+
+  const readMode = () => {
+    const checked = modeInputs.find((node) => node.checked);
+    const mode = String(checked?.value || "ai").toLowerCase();
+    return mode === "manual" ? "manual" : "ai";
+  };
+
+  return new Promise((resolve) => {
+    const syncManual = () => {
+      const manual = readMode() === "manual";
+      if (portalUploadManualGroup) {
+        portalUploadManualGroup.style.display = manual ? "grid" : "none";
+      }
+    };
+
+    const cleanup = () => {
+      modeInputs.forEach((node) => node.removeEventListener("change", syncManual));
+      portalUploadClassifyClose?.removeEventListener("click", onCancel);
+      portalUploadClassifyCancel?.removeEventListener("click", onCancel);
+      portalUploadClassifyConfirm?.removeEventListener("click", onConfirm);
+      portalUploadClassifyModal.removeEventListener("click", onBackdrop);
+      portalUploadClassifyModal.classList.remove("open");
+      portalUploadClassifyModal.setAttribute("aria-hidden", "true");
+    };
+
+    const onCancel = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    const onConfirm = () => {
+      const classificationMode = readMode();
+      const manualSpineClass = String(portalUploadManualSelect?.value || "").trim();
+      if (classificationMode === "manual" && !manualSpineClass) {
+        setUploadStatus("请选择手动分类类型", false);
+        portalUploadManualSelect?.focus();
+        return;
+      }
+      cleanup();
+      resolve({
+        classificationMode,
+        manualSpineClass: classificationMode === "manual" ? manualSpineClass : "",
+      });
+    };
+
+    const onBackdrop = (event) => {
+      if (event.target === portalUploadClassifyModal) {
+        onCancel();
+      }
+    };
+
+    modeInputs.forEach((node) => {
+      node.checked = String(node.value || "").toLowerCase() === "ai";
+      node.addEventListener("change", syncManual);
+    });
+    if (portalUploadManualSelect) {
+      portalUploadManualSelect.value = "";
+    }
+
+    portalUploadClassifyClose?.addEventListener("click", onCancel);
+    portalUploadClassifyCancel?.addEventListener("click", onCancel);
+    portalUploadClassifyConfirm?.addEventListener("click", onConfirm);
+    portalUploadClassifyModal.addEventListener("click", onBackdrop);
+
+    syncManual();
+    portalUploadClassifyModal.classList.add("open");
+    portalUploadClassifyModal.setAttribute("aria-hidden", "false");
+  });
 }
 
 function setDropPreview(file) {
@@ -1103,6 +1474,7 @@ function bindPanelMenu() {
     if (portalHeaderTitle) {
       portalHeaderTitle.textContent = `Spine FUPT · 患者中心 · ${panelName}`;
     }
+    closePortalSidebar();
     if (panelId === "chat-panel") {
       chatState.unread = 0;
       updatePortalChatUnreadBadge();
@@ -1280,10 +1652,18 @@ async function sendChatMessage() {
   portalChatInput.value = "";
 }
 
-function uploadWithProgress(file) {
+function uploadWithProgress(file, classifyChoice) {
   return new Promise((resolve) => {
     const fd = new FormData();
     fd.append("file", file);
+    const mode = String(classifyChoice?.classificationMode || "ai").toLowerCase() === "manual" ? "manual" : "ai";
+    fd.append("classification_mode", mode);
+    if (mode === "manual") {
+      const manualSpineClass = String(classifyChoice?.manualSpineClass || "").trim();
+      if (manualSpineClass) {
+        fd.append("manual_spine_class", manualSpineClass);
+      }
+    }
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `/api/public/portal/${token}/exams`, true);
     xhr.upload.addEventListener("progress", (event) => {
@@ -1325,9 +1705,14 @@ document.getElementById("upload-btn").addEventListener("click", async () => {
     setUploadStatus("请选择或拖拽要上传的图片", false);
     return;
   }
+  const classifyChoice = await askPortalUploadClassification();
+  if (!classifyChoice) {
+    setUploadStatus("已取消上传", false);
+    return;
+  }
   setUploadStatus("上传中 0%...", true);
   setUploadProgress(0);
-  const res = await uploadWithProgress(file);
+  const res = await uploadWithProgress(file, classifyChoice);
   if (!res.ok) {
     setUploadStatus(`上传失败：${res.error?.message || "未知错误"}`, false);
     clearUploadProgress();
@@ -1374,12 +1759,33 @@ imageModal.addEventListener("click", (event) => {
   if (event.target === imageModal) closeImageModal();
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeImageModal();
+  if (event.key === "Escape") {
+    closeImageModal();
+    closePortalSidebar();
+  }
+});
+
+portalSidebarToggle?.addEventListener("click", () => {
+  if (!portalSidebar) return;
+  setPortalSidebarOpen(!portalSidebar.classList.contains("mobile-open"));
+});
+portalSidebarClose?.addEventListener("click", closePortalSidebar);
+portalSidebarBackdrop?.addEventListener("click", closePortalSidebar);
+window.addEventListener("resize", () => {
+  if (!isNarrowPortalViewport()) {
+    closePortalSidebar();
+  }
+});
+window.addEventListener("orientationchange", () => {
+  if (!isNarrowPortalViewport()) {
+    closePortalSidebar();
+  }
 });
 
 bindPanelMenu();
 bindUploadDnD();
 updatePortalChatUnreadBadge();
+setPortalSidebarOpen(false);
 loadChat();
 portalChatSend?.addEventListener("click", sendChatMessage);
 portalChatInput?.addEventListener("keydown", (event) => {

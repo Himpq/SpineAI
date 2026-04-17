@@ -34,6 +34,7 @@
       chatsLoading: false,
       chats: [],
       chatSelectedId: null,
+      chatMobileDetailOpen: false,
       chatMessagesMap: {},
       chatMessagesLoading: false,
       realtimeChatChannel: "",
@@ -67,10 +68,12 @@
       loading: false,
       submitting: false,
       deletingId: null,
+      reclassifyId: null,
       list: [],
       selectedId: null,
       detailMap: {},
       noteDraftMap: {},
+      mobileDetailOpen: false,
       viewer: {
         imageSource: "ai",
         hasAi: false,
@@ -151,6 +154,7 @@
   };
   const VIEW_STATE_KEY = "spine_fupt_active_view";
   const REVIEW_VIEWER_CACHE_KEY = "spine_fupt_review_viewer_transform_v1";
+  const OVERVIEW_CACHE_KEY = "spine_fupt_overview_cache_v1";
 
   const el = (id) => document.getElementById(id);
 
@@ -206,6 +210,36 @@
       headers["Content-Type"] = "application/json";
       fetchOptions.body = JSON.stringify(options.body);
     }
+
+    const response = await fetch(path, fetchOptions);
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch (_err) {
+      payload = {};
+    }
+
+    if (!response.ok || payload.ok === false) {
+      const err = new Error(
+        (payload && payload.error && payload.error.message) ||
+          (payload && payload.message) ||
+          `Request failed (${response.status})`
+      );
+      err.status = response.status;
+      throw err;
+    }
+
+    return payload.data || {};
+  }
+
+  async function apiMultipart(path, formData, options = {}) {
+    const method = options.method || "POST";
+    const fetchOptions = {
+      method,
+      body: formData,
+      credentials: "same-origin",
+      headers: Object.assign({}, options.headers || {}),
+    };
 
     const response = await fetch(path, fetchOptions);
     let payload = {};
@@ -328,14 +362,101 @@
     dateNode.textContent = dt.date;
   }
 
-  function setOverviewMetrics(patientTotal, pendingReviews) {
-    const patientNode = el("overview-patient-count");
-    const pendingNode = el("overview-pending-count");
-    if (patientNode) {
-      patientNode.textContent = Number.isFinite(patientTotal) ? String(patientTotal) : "-";
+  function setOverviewMetrics(statsOrPatientTotal, maybePendingReviews) {
+    const stats =
+      statsOrPatientTotal && typeof statsOrPatientTotal === "object"
+        ? statsOrPatientTotal
+        : {
+            patient_total: statsOrPatientTotal,
+            pending_reviews: maybePendingReviews,
+          };
+
+    const followupActive = Number(stats.followup_active);
+    const followupDueSoon = Number(stats.followup_due_soon);
+    const pendingReviews = Number(stats.pending_reviews);
+    const followupOverdue = Number(stats.followup_overdue);
+    const todaySchedules = Number(stats.today_schedules);
+    const legacyPatientTotal = Number(stats.patient_total);
+
+    const taskTotal = Number.isFinite(pendingReviews)
+      ? pendingReviews + (Number.isFinite(followupOverdue) ? followupOverdue : 0)
+      : Number.isFinite(todaySchedules)
+        ? todaySchedules
+        : NaN;
+
+    const followupNode = el("overview-followup-active");
+    const dueSoonNode = el("overview-followup-due-soon");
+    const taskNode = el("overview-task-total");
+
+    if (followupNode) {
+      followupNode.textContent = Number.isFinite(followupActive)
+        ? String(followupActive)
+        : Number.isFinite(legacyPatientTotal)
+          ? String(legacyPatientTotal)
+          : "-";
     }
-    if (pendingNode) {
-      pendingNode.textContent = Number.isFinite(pendingReviews) ? String(pendingReviews) : "-";
+    if (dueSoonNode) {
+      dueSoonNode.textContent = Number.isFinite(followupDueSoon)
+        ? String(followupDueSoon)
+        : Number.isFinite(pendingReviews)
+          ? String(pendingReviews)
+          : "-";
+    }
+    if (taskNode) {
+      taskNode.textContent = Number.isFinite(taskTotal) ? String(taskTotal) : "-";
+    }
+
+    const legacyPatientNode = el("overview-patient-count");
+    const legacyPendingNode = el("overview-pending-count");
+    if (legacyPatientNode) {
+      legacyPatientNode.textContent = Number.isFinite(legacyPatientTotal) ? String(legacyPatientTotal) : "-";
+    }
+    if (legacyPendingNode) {
+      legacyPendingNode.textContent = Number.isFinite(pendingReviews) ? String(pendingReviews) : "-";
+    }
+  }
+
+  function withTimeout(promise, timeoutMs) {
+    let timer = null;
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = window.setTimeout(() => {
+        reject(new Error("request_timeout"));
+      }, timeoutMs);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+    });
+  }
+
+  function readOverviewCache() {
+    try {
+      const raw = window.localStorage.getItem(OVERVIEW_CACHE_KEY);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return null;
+      }
+      return parsed;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function writeOverviewCache(payload) {
+    try {
+      window.localStorage.setItem(
+        OVERVIEW_CACHE_KEY,
+        JSON.stringify({
+          ...payload,
+          cached_at: Date.now(),
+        })
+      );
+    } catch (_err) {
+      // Ignore storage write failures.
     }
   }
 
@@ -833,6 +954,87 @@
     state.reviews.deletingId = null;
   }
 
+  function reviewSpineClassText(className) {
+    const key = String(className || "").toLowerCase();
+    if (key === "cervical") {
+      return "颈椎";
+    }
+    if (key === "lumbar") {
+      return "腰椎";
+    }
+    if (key === "pelvis") {
+      return "骨盆";
+    }
+    if (key === "clavicle") {
+      return "锁骨/T1";
+    }
+    return "未分类";
+  }
+
+  function closeReviewReclassifyModal() {
+    const modal = el("review-reclassify-modal");
+    const select = el("review-reclassify-class-select");
+    if (modal) {
+      modal.classList.add("hidden");
+    }
+    if (select) {
+      select.value = "";
+    }
+    state.reviews.reclassifyId = null;
+  }
+
+  function openReviewReclassifyModal(examId) {
+    const id = Number(examId) || 0;
+    if (!id || state.reviews.submitting) {
+      return;
+    }
+    const modal = el("review-reclassify-modal");
+    const text = el("review-reclassify-modal-text");
+    const select = el("review-reclassify-class-select");
+    if (!modal || !text || !select) {
+      return;
+    }
+    const row = (Array.isArray(state.reviews.list) ? state.reviews.list : []).find((item) => Number(item.id) === id);
+    const pname = row?.patient_name || "该患者";
+    text.textContent = `请选择 ${pname} 的分类方案后重新推理。此操作不会调用 AI 自动分类。`;
+    select.value = "";
+    state.reviews.reclassifyId = id;
+    modal.classList.remove("hidden");
+  }
+
+  async function confirmReviewReclassify() {
+    const id = Number(state.reviews.reclassifyId || 0) || 0;
+    if (!id || state.reviews.submitting) {
+      closeReviewReclassifyModal();
+      return;
+    }
+    const select = el("review-reclassify-class-select");
+    const manualSpineClass = String(select?.value || "").trim();
+    if (!manualSpineClass) {
+      showToast("请选择分类方案", "warn");
+      select?.focus();
+      return;
+    }
+
+    closeReviewReclassifyModal();
+    state.reviews.submitting = true;
+    renderReviewsList();
+    try {
+      await api(`/api/reviews/${id}/reclassify`, {
+        method: "POST",
+        body: { manual_spine_class: manualSpineClass },
+      });
+      delete state.reviews.detailMap[id];
+      showToast(`已按 ${reviewSpineClassText(manualSpineClass)} 重新推理`, "success");
+      await loadReviews(true);
+    } catch (err) {
+      showToast(err.message || "重推理失败", "error");
+    } finally {
+      state.reviews.submitting = false;
+      renderReviewsList();
+    }
+  }
+
   function openReviewDeleteModal(examId) {
     const id = Number(examId) || 0;
     if (!id || state.reviews.submitting) {
@@ -901,15 +1103,25 @@
       options && Object.prototype.hasOwnProperty.call(options, "preserveTransform")
         ? Boolean(options.preserveTransform)
         : true;
+    const openMobileDetail =
+      options && Object.prototype.hasOwnProperty.call(options, "openMobileDetail")
+        ? Boolean(options.openMobileDetail)
+        : true;
     state.reviews.selectedId = id;
     state.reviews.viewer.imageSource = "ai";
+    if (isMobile() && openMobileDetail) {
+      state.reviews.mobileDetailOpen = true;
+    }
+    syncReviewsMobileView();
     renderReviewsList();
     try {
       const detail = await loadReviewDetail(id, Boolean(options.force));
       renderReviewsList();
       updateReviewViewerImage(detail, "ai", { keepTransform: preserveTransform });
+      syncReviewsMobileView();
     } catch (err) {
       updateReviewViewerImage(null);
+      syncReviewsMobileView();
       showToast(err.message || "加载复核详情失败", "error");
     }
   }
@@ -926,6 +1138,7 @@
           updateReviewViewerImage(cached, state.reviews.viewer.imageSource || "ai", { keepTransform: true });
         }
       }
+      syncReviewsMobileView();
       return;
     }
     state.reviews.loading = true;
@@ -938,15 +1151,21 @@
       if (!hasSelected) {
         state.reviews.selectedId = state.reviews.list.length > 0 ? Number(state.reviews.list[0].id) : null;
       }
+      if (!state.reviews.selectedId) {
+        state.reviews.mobileDetailOpen = false;
+      }
       renderReviewsList();
       if (state.reviews.selectedId) {
-        await selectReview(state.reviews.selectedId, { preserveTransform: true });
+        await selectReview(state.reviews.selectedId, { preserveTransform: true, openMobileDetail: false });
       } else {
         updateReviewViewerImage(null);
       }
+      syncReviewsMobileView();
     } catch (err) {
       state.reviews.list = [];
+      state.reviews.mobileDetailOpen = false;
       renderReviewsList();
+      syncReviewsMobileView();
       showToast(err.message || "加载复核列表失败", "error");
     } finally {
       state.reviews.loading = false;
@@ -1057,6 +1276,41 @@
     }
   }
 
+  function syncQuestionnaireChatMobileView() {
+    const view = el("questionnaires-chat-view");
+    const backBtn = el("questionnaires-chat-back-btn");
+    if (!view) {
+      return;
+    }
+    const selected = Number(state.questionnaires.chatSelectedId || 0) > 0;
+    const mobileDetailOpen =
+      isMobile() &&
+      selected &&
+      !state.questionnaires.directoryMode &&
+      Boolean(state.questionnaires.chatMobileDetailOpen);
+
+    view.classList.toggle("mobile-detail-open", mobileDetailOpen);
+    if (backBtn) {
+      backBtn.classList.toggle("hidden", !mobileDetailOpen);
+      backBtn.disabled = !mobileDetailOpen;
+    }
+  }
+
+  function syncReviewsMobileView() {
+    const panel = el("reviews-panel");
+    const backBtn = el("reviews-mobile-back-btn");
+    if (!panel) {
+      return;
+    }
+    const selected = Number(state.reviews.selectedId || 0) > 0;
+    const mobileDetailOpen = isMobile() && selected && Boolean(state.reviews.mobileDetailOpen);
+    panel.classList.toggle("mobile-detail-open", mobileDetailOpen);
+    if (backBtn) {
+      backBtn.classList.toggle("hidden", !mobileDetailOpen);
+      backBtn.disabled = !mobileDetailOpen;
+    }
+  }
+
   async function loadQuestionnaireDirectory(force = false) {
     if (state.questionnaires.directoryLoading) {
       return;
@@ -1109,22 +1363,26 @@
   async function setQuestionnaireChatDirectoryMode(enabled) {
     const on = Boolean(enabled);
     state.questionnaires.directoryMode = on;
+    state.questionnaires.chatMobileDetailOpen = false;
     state.questionnaires.directoryKeyword = "";
     const input = el("questionnaires-chat-search-input");
     if (input) {
       input.value = "";
     }
     syncQuestionnaireChatDirectoryUI();
+    syncQuestionnaireChatMobileView();
     if (on) {
       await loadQuestionnaireDirectory(false);
       renderQuestionnaireChatTitlebar();
       renderQuestionnaireChatMessages();
+      syncQuestionnaireChatMobileView();
       input?.focus();
       return;
     }
     renderQuestionnaireChatList();
     renderQuestionnaireChatTitlebar();
     renderQuestionnaireChatMessages();
+    syncQuestionnaireChatMobileView();
   }
 
   async function startConversationFromDirectory(kind, id) {
@@ -1308,12 +1566,17 @@
       return;
     }
     state.questionnaires.chatSelectedId = cid;
+    if (isMobile()) {
+      state.questionnaires.chatMobileDetailOpen = true;
+    }
+    syncQuestionnaireChatMobileView();
     renderQuestionnaireChatList();
     renderQuestionnaireChatTitlebar();
     await loadQuestionnaireChatMessages(cid, false);
     await markQuestionnaireChatRead(cid);
     syncRealtimeChatChannelSubscription();
     renderQuestionnaireChatList();
+    syncQuestionnaireChatMobileView();
   }
 
   async function loadQuestionnaireChats(force = false) {
@@ -1322,8 +1585,10 @@
     }
     if (!force && state.questionnaires.chatsLoaded) {
       renderQuestionnaireChatList();
+      renderQuestionnaireChatTitlebar();
       renderQuestionnaireChatMessages();
       updateChatUnreadBadges();
+      syncQuestionnaireChatMobileView();
       return;
     }
     state.questionnaires.chatsLoading = true;
@@ -1336,6 +1601,7 @@
       );
       if (!hasSelected) {
         state.questionnaires.chatSelectedId = null;
+        state.questionnaires.chatMobileDetailOpen = false;
       }
       renderQuestionnaireChatList();
       renderQuestionnaireChatTitlebar();
@@ -1348,11 +1614,14 @@
         renderQuestionnaireChatMessages();
       }
       syncRealtimeChatChannelSubscription();
+      syncQuestionnaireChatMobileView();
     } catch (err) {
       state.questionnaires.chats = [];
+      state.questionnaires.chatMobileDetailOpen = false;
       renderQuestionnaireChatList();
       renderQuestionnaireChatTitlebar();
       renderQuestionnaireChatMessages();
+      syncQuestionnaireChatMobileView();
       showToast(err.message || "加载聊天列表失败", "error");
     } finally {
       state.questionnaires.chatsLoading = false;
@@ -1452,14 +1721,16 @@
       .map((row) => {
         const pid = Number(row.id) || 0;
         const isSelected = selected.has(pid);
+        const statusText = String(row.status_text || "随访中");
+        const nextFollowupText = row.next_followup_at ? ` · 下次随访 ${formatDateOnly(row.next_followup_at)}` : "";
         return `
-          <label class="questionnaire-assign-item ${isSelected ? "selected" : ""}" data-patient-id="${pid}">
+          <div class="questionnaire-assign-item ${isSelected ? "selected" : ""}" data-patient-id="${pid}">
             <div class="questionnaire-assign-item-left">
               <div class="questionnaire-assign-item-name">${escapeHtml(row.name || `患者-${pid}`)}</div>
-              <div class="questionnaire-assign-item-meta">患者ID ${pid}</div>
+              <div class="questionnaire-assign-item-meta">患者ID ${pid} · ${escapeHtml(statusText)}${escapeHtml(nextFollowupText)}</div>
             </div>
-            <input type="checkbox" ${isSelected ? "checked" : ""} />
-          </label>
+            <input type="checkbox" data-patient-checkbox data-patient-id="${pid}" ${isSelected ? "checked" : ""} />
+          </div>
         `;
       })
       .join("");
@@ -1469,40 +1740,33 @@
     state.questionnaires.assignLoading = true;
     renderQuestionnaireAssignList();
     try {
-      await loadQuestionnaireChats(false);
-      const data = await api("/api/patients");
-      const patients = Array.isArray(data.items) ? data.items : [];
-      const patientMap = new Map();
-      patients.forEach((p) => {
+      const perPage = 100;
+      let page = 1;
+      let hasMore = true;
+      const allPatients = [];
+      while (hasMore && page <= 50) {
+        const data = await api(`/api/patients?page=${page}&per_page=${perPage}`);
+        const rows = Array.isArray(data.items) ? data.items : [];
+        allPatients.push(...rows);
+        hasMore = Boolean(data.has_more) && rows.length > 0;
+        page += 1;
+      }
+
+      const uniqueMap = new Map();
+      allPatients.forEach((p) => {
         const pid = Number(p.id) || 0;
-        if (!pid) {
+        if (!pid || uniqueMap.has(pid)) {
           return;
         }
-        patientMap.set(pid, {
+        uniqueMap.set(pid, {
           id: pid,
           name: p.name || `患者-${pid}`,
+          status_text: p.status_text || "随访中",
+          next_followup_at: p.next_followup_at || null,
+          updated_at: p.updated_at || null,
         });
       });
-      const ordered = [];
-      const used = new Set();
-      const chats = Array.isArray(state.questionnaires.chats) ? state.questionnaires.chats : [];
-      chats.forEach((chat) => {
-        const pid = Number(chat.patient_id) || 0;
-        if (!pid || used.has(pid) || !patientMap.has(pid)) {
-          return;
-        }
-        ordered.push(patientMap.get(pid));
-        used.add(pid);
-      });
-      patients.forEach((p) => {
-        const pid = Number(p.id) || 0;
-        if (!pid || used.has(pid) || !patientMap.has(pid)) {
-          return;
-        }
-        ordered.push(patientMap.get(pid));
-        used.add(pid);
-      });
-      state.questionnaires.assignCandidates = ordered;
+      state.questionnaires.assignCandidates = [...uniqueMap.values()];
     } catch (err) {
       state.questionnaires.assignCandidates = [];
       showToast(err.message || "加载患者列表失败", "error");
@@ -2863,6 +3127,214 @@
     panel?.classList.remove("patients-detail-mode");
   }
 
+  function patientRiskLevelText(level) {
+    const key = String(level || "low");
+    if (key === "high") {
+      return "高风险";
+    }
+    if (key === "medium") {
+      return "中风险";
+    }
+    return "低风险";
+  }
+
+  function patientRiskLevelClass(level) {
+    const key = String(level || "low");
+    if (key === "high") {
+      return "risk-high";
+    }
+    if (key === "medium") {
+      return "risk-medium";
+    }
+    return "risk-low";
+  }
+
+  function renderPatientTrendChart(trendRows) {
+    const rows = (Array.isArray(trendRows) ? trendRows : [])
+      .filter((row) => Number.isFinite(Number(row?.cobb_angle)))
+      .slice(-12);
+    if (rows.length < 2) {
+      return '<div class="patient-status-trend-empty">趋势数据不足，至少需要 2 次有效影像记录。</div>';
+    }
+
+    const values = rows.map((row) => Number(row.cobb_angle));
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const span = Math.max(1, maxValue - minValue);
+
+    const width = 480;
+    const height = 180;
+    const padX = 30;
+    const padY = 24;
+
+    const points = rows.map((row, idx) => {
+      const ratioX = rows.length <= 1 ? 0 : idx / (rows.length - 1);
+      const x = padX + ratioX * (width - padX * 2);
+      const y = height - padY - ((Number(row.cobb_angle) - minValue) / span) * (height - padY * 2);
+      return {
+        x,
+        y,
+        value: Number(row.cobb_angle),
+        date: row.date,
+      };
+    });
+
+    const polylinePoints = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+    const minLabel = `${minValue.toFixed(1)}°`;
+    const maxLabel = `${maxValue.toFixed(1)}°`;
+    const startLabel = formatDateOnly(rows[0].date);
+    const endLabel = formatDateOnly(rows[rows.length - 1].date);
+
+    return `
+      <div class="patient-status-trend-chart-wrap">
+        <svg class="patient-status-trend-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Cobb 角趋势图">
+          <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" stroke="#cbd5e1" stroke-width="1"></line>
+          <line x1="${padX}" y1="${padY}" x2="${padX}" y2="${height - padY}" stroke="#cbd5e1" stroke-width="1"></line>
+          <polyline fill="none" stroke="#2563eb" stroke-width="3" points="${polylinePoints}"></polyline>
+          ${points
+            .map(
+              (p) =>
+                `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="#1d4ed8"><title>${escapeHtml(
+                  `${formatDateOnly(p.date)} · ${p.value.toFixed(1)}°`
+                )}</title></circle>`
+            )
+            .join("")}
+          <text x="${padX}" y="${padY - 6}" fill="#475569" font-size="11">${escapeHtml(maxLabel)}</text>
+          <text x="${padX}" y="${height - padY + 16}" fill="#475569" font-size="11">${escapeHtml(minLabel)}</text>
+        </svg>
+        <div class="patient-status-trend-axis">
+          <span>${escapeHtml(startLabel)}</span>
+          <span>${escapeHtml(endLabel)}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function pickUploadClassificationChoice() {
+    const modal = el("upload-classify-modal");
+    const closeBtn = el("upload-classify-close-btn");
+    const cancelBtn = el("upload-classify-cancel-btn");
+    const confirmBtn = el("upload-classify-confirm-btn");
+    const manualGroup = el("upload-manual-class-group");
+    const manualSelect = el("upload-manual-class-select");
+    const modeInputs = Array.from(modal?.querySelectorAll("input[name='upload-classify-mode']") || []);
+
+    if (!modal || !modeInputs.length || !confirmBtn) {
+      return Promise.resolve({ classificationMode: "ai", manualSpineClass: "" });
+    }
+
+    const readMode = () => {
+      const checked = modeInputs.find((node) => node.checked);
+      const mode = String(checked?.value || "ai").toLowerCase();
+      return mode === "manual" ? "manual" : "ai";
+    };
+
+    return new Promise((resolve) => {
+      const syncManualGroup = () => {
+        const isManual = readMode() === "manual";
+        manualGroup?.classList.toggle("hidden", !isManual);
+      };
+
+      const cleanup = () => {
+        modeInputs.forEach((node) => node.removeEventListener("change", syncManualGroup));
+        closeBtn?.removeEventListener("click", onCancel);
+        cancelBtn?.removeEventListener("click", onCancel);
+        confirmBtn.removeEventListener("click", onConfirm);
+        modal.removeEventListener("click", onBackdropClick);
+        modal.classList.add("hidden");
+        modal.setAttribute("aria-hidden", "true");
+      };
+
+      const onCancel = () => {
+        cleanup();
+        resolve(null);
+      };
+
+      const onConfirm = () => {
+        const classificationMode = readMode();
+        const manualSpineClass = String(manualSelect?.value || "").trim();
+        if (classificationMode === "manual" && !manualSpineClass) {
+          showToast("请选择手动分类类型", "warn");
+          manualSelect?.focus();
+          return;
+        }
+        cleanup();
+        resolve({
+          classificationMode,
+          manualSpineClass: classificationMode === "manual" ? manualSpineClass : "",
+        });
+      };
+
+      const onBackdropClick = (event) => {
+        if (event.target === modal) {
+          onCancel();
+        }
+      };
+
+      modeInputs.forEach((node) => {
+        node.checked = String(node.value || "").toLowerCase() === "ai";
+        node.addEventListener("change", syncManualGroup);
+      });
+      if (manualSelect) {
+        manualSelect.value = "";
+      }
+
+      closeBtn?.addEventListener("click", onCancel);
+      cancelBtn?.addEventListener("click", onCancel);
+      confirmBtn.addEventListener("click", onConfirm);
+      modal.addEventListener("click", onBackdropClick);
+
+      syncManualGroup();
+      modal.classList.remove("hidden");
+      modal.setAttribute("aria-hidden", "false");
+    });
+  }
+
+  async function startPatientExamUpload(patientId) {
+    const id = Number(patientId);
+    if (!Number.isFinite(id)) {
+      showToast("患者信息无效，无法上传", "warn");
+      return;
+    }
+
+    const picker = document.createElement("input");
+    picker.type = "file";
+    picker.accept = "image/*";
+
+    picker.addEventListener("change", async () => {
+      const file = picker.files && picker.files[0] ? picker.files[0] : null;
+      if (!file) {
+        return;
+      }
+
+      const classifyChoice = await pickUploadClassificationChoice();
+      if (!classifyChoice) {
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("classification_mode", classifyChoice.classificationMode);
+      if (classifyChoice.classificationMode === "manual" && classifyChoice.manualSpineClass) {
+        formData.append("manual_spine_class", classifyChoice.manualSpineClass);
+      }
+
+      try {
+        showToast("影像上传中...", "info");
+        await apiMultipart(`/api/patients/${id}/exams`, formData);
+        const refreshed = await api(`/api/patients/${id}`);
+        state.patients.detailMap[id] = refreshed;
+        renderPatientDetail(refreshed);
+        await loadPatients(true);
+        showToast("影像上传成功，AI 正在分析", "success");
+      } catch (err) {
+        showToast(err.message || "影像上传失败", "error");
+      }
+    });
+
+    picker.click();
+  }
+
   function renderPatientDetail(detail) {
     const host = el("patients-detail-content");
     if (!host) {
@@ -2881,7 +3353,6 @@
     const safeNote = escapeHtml(p.note || "");
     const portalUrl = String(p.portal_url || "");
     const safePortalUrl = escapeHtml(portalUrl);
-    const nextFollowup = p.next_schedule ? `${formatShortDateTime(p.next_schedule.scheduled_at)} ${p.next_schedule.title || ""}` : "未安排";
     const tab = state.patients.detailTab === "status" ? "status" : "basic";
     const basicTabBtn = el("patients-tab-basic");
     const statusTabBtn = el("patients-tab-status");
@@ -2893,18 +3364,86 @@
       .map((v) => `<option value="${escapeHtml(v)}" ${sexValue === v ? "selected" : ""}>${escapeHtml(v)}</option>`)
       .join("");
 
+    const followup = p.followup && typeof p.followup === "object" ? p.followup : {};
+    const riskScoreRaw = Number(followup.risk_score);
+    const riskScore = Number.isFinite(riskScoreRaw) ? Math.max(0, Math.min(100, Math.round(riskScoreRaw))) : null;
+    const riskScorePercent = Number.isFinite(riskScore) ? riskScore : 0;
+    const riskLevel = String(followup.risk_level || "low");
+    const riskLevelText = patientRiskLevelText(riskLevel);
+    const riskLevelClass = patientRiskLevelClass(riskLevel);
+    const treatmentPhase = followup.treatment_phase && typeof followup.treatment_phase === "object" ? followup.treatment_phase : {};
+    const treatmentPhaseLabel = String(treatmentPhase.label || "常规随访期");
+    const treatmentPhaseDesc = String(treatmentPhase.description || "暂无治疗阶段说明");
+    const completionRate = Number(followup.completion_rate);
+    const completionText = Number.isFinite(completionRate) ? `${completionRate.toFixed(1)}%` : "-";
+    const nextDueText = followup.next_due_at ? formatShortDateTime(followup.next_due_at) : "--";
+    const activeSchedules = Number(followup.active_schedules);
+    const totalSchedules = Number(followup.total_schedules);
+    const overdueSchedules = Number(followup.overdue_schedules);
+    const dueSoonSchedules = Number(followup.due_soon_schedules);
+    const followupSummary = String(followup.summary || "暂无随访总结");
+    const riskTags = Array.isArray(followup.risk_tags) ? followup.risk_tags : [];
+    const trendRows = Array.isArray(followup.trend) ? followup.trend : Array.isArray(p.trend) ? p.trend : [];
+    const trendChartHtml = renderPatientTrendChart(trendRows);
+
     host.innerHTML = tab === "status"
       ? `
       <div class="patient-detail-layout">
         <section class="patient-detail-card patient-detail-card-main">
           <header class="patient-detail-main-head">
             <h3>${safeName} 的状况</h3>
+            <span class="patient-status-level-chip ${riskLevelClass}">${riskLevelText}</span>
           </header>
-          <div class="patients-empty">状况页面占位，后续接入风险评分、趋势图与治疗阶段信息。</div>
+
+          <div class="patient-status-kpi-grid">
+            <article class="patient-status-kpi ${riskLevelClass}">
+              <span>风险评分</span>
+              <strong>${riskScore !== null ? String(riskScore) : "-"}</strong>
+              <p>${riskLevelText}</p>
+              <div class="patient-status-risk-bar"><span style="width:${riskScorePercent}%"></span></div>
+            </article>
+            <article class="patient-status-kpi">
+              <span>治疗阶段</span>
+              <strong>${escapeHtml(treatmentPhaseLabel)}</strong>
+              <p>${escapeHtml(treatmentPhaseDesc)}</p>
+            </article>
+            <article class="patient-status-kpi">
+              <span>下次随访</span>
+              <strong>${escapeHtml(nextDueText)}</strong>
+              <p>逾期 ${Number.isFinite(overdueSchedules) ? overdueSchedules : 0} · 即将到期 ${Number.isFinite(dueSoonSchedules) ? dueSoonSchedules : 0}</p>
+            </article>
+            <article class="patient-status-kpi">
+              <span>随访完成率</span>
+              <strong>${escapeHtml(completionText)}</strong>
+              <p>进行中 ${Number.isFinite(activeSchedules) ? activeSchedules : 0} · 总计划 ${Number.isFinite(totalSchedules) ? totalSchedules : 0}</p>
+            </article>
+          </div>
+
+          <section class="patient-status-section">
+            <h4>Cobb 趋势图</h4>
+            <div class="patient-status-trend">${trendChartHtml}</div>
+          </section>
+
+          <section class="patient-status-section">
+            <h4>风险标签</h4>
+            <div class="patient-status-tags">
+              ${
+                riskTags.length
+                  ? riskTags.map((tag) => `<span class="patient-status-tag ${riskLevelClass}">${escapeHtml(tag)}</span>`).join("")
+                  : '<span class="patient-status-tag">暂无风险标签</span>'
+              }
+            </div>
+            <p class="patient-status-summary">${escapeHtml(followupSummary)}</p>
+          </section>
         </section>
         <div class="patient-detail-side">
           <section class="patient-detail-card">
-            <h3>影像记录（${exams.length}）</h3>
+            <div class="patient-detail-card-head">
+              <h3>影像记录（${exams.length}）</h3>
+              <button type="button" class="patient-detail-btn" data-patient-upload-btn>
+                <i class="fa-solid fa-file-circle-plus"></i><span>上传影像</span>
+              </button>
+            </div>
             <ul class="patient-detail-list">
               ${
                 exams.length
@@ -2968,65 +3507,74 @@
             </div>
           </header>
 
-          <div class="patient-detail-grid compact ${isEditing ? "editing" : ""}">
-            <label class="patient-detail-field">
-              <span>姓名</span>
-              <input id="patient-field-name" type="text" value="${escapeHtml(p.name || "")}" ${isEditing ? "" : "readonly"}>
-            </label>
-            <label class="patient-detail-field">
-              <span>年龄</span>
-              <input id="patient-field-age" type="number" min="0" max="130" value="${escapeHtml(p.age ?? "")}" ${isEditing ? "" : "readonly"}>
-            </label>
-            <label class="patient-detail-field">
-              <span>性别</span>
-              ${
-                isEditing
-                  ? `<select id="patient-field-sex"><option value="">未设置</option>${sexHtml}</select>`
-                  : `<input type="text" value="${escapeHtml(p.sex || "-")}" readonly>`
-              }
-            </label>
-            <label class="patient-detail-field">
-              <span>电话</span>
-              <input id="patient-field-phone" type="text" value="${escapeHtml(p.phone || "")}" ${isEditing ? "" : "readonly"}>
-            </label>
-            <label class="patient-detail-field">
-              <span>邮箱</span>
-              <input id="patient-field-email" type="text" value="${escapeHtml(p.email || "")}" ${isEditing ? "" : "readonly"}>
-            </label>
-            <div class="patient-detail-field readonly">
-              <span>状态</span>
-              <strong>${escapeHtml(p.status_text || "-")}</strong>
-            </div>
-            <div class="patient-detail-field readonly">
-              <span>最近复核</span>
-              <strong>${escapeHtml(formatDateOnly(p.last_followup))}</strong>
-            </div>
-            <div class="patient-detail-field readonly">
-              <span>下次随访</span>
-              <strong>${escapeHtml(nextFollowup)}</strong>
-            </div>
-            <label class="patient-detail-field full">
-              <span>备注</span>
-              <textarea id="patient-field-note" rows="3" ${isEditing ? "" : "readonly"}>${safeNote}</textarea>
-            </label>
-            <div class="patient-detail-field full patient-detail-url-field">
-              <span>患者专属URL</span>
-              <div class="patient-detail-url-row">
-                <input id="patient-portal-url" type="text" value="${safePortalUrl}" readonly>
-                <button id="patient-portal-copy-btn" type="button" class="patient-detail-icon-btn" title="复制链接">
-                  <i class="fa-solid fa-copy"></i>
-                </button>
-                <a id="patient-portal-open-btn" class="patient-detail-icon-btn" href="${safePortalUrl}" target="_blank" rel="noopener noreferrer" title="打开链接">
-                  <i class="fa-solid fa-up-right-from-square"></i>
-                </a>
-              </div>
-            </div>
+          <div class="patient-detail-dense-table-wrap ${isEditing ? "editing" : ""}">
+            <table class="patient-detail-dense-table" role="table" aria-label="患者基础信息表">
+              <tbody>
+                <tr>
+                  <th scope="row">姓名</th>
+                  <td>
+                    ${isEditing ? `<input id="patient-field-name" type="text" value="${escapeHtml(p.name || "")}">` : `<strong>${escapeHtml(p.name || "-")}</strong>`}
+                  </td>
+                  <th scope="row">性别</th>
+                  <td>
+                    ${isEditing ? `<select id="patient-field-sex"><option value="">未设置</option>${sexHtml}</select>` : `<strong>${escapeHtml(p.sex || "-")}</strong>`}
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">年龄</th>
+                  <td>
+                    ${isEditing ? `<input id="patient-field-age" type="number" min="0" max="130" value="${escapeHtml(p.age ?? "")}">` : `<strong>${escapeHtml(p.age ?? "-")}</strong>`}
+                  </td>
+                  <th scope="row">电话</th>
+                  <td>
+                    ${isEditing ? `<input id="patient-field-phone" type="text" value="${escapeHtml(p.phone || "")}">` : `<strong>${escapeHtml(p.phone || "-")}</strong>`}
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">邮箱</th>
+                  <td colspan="3">
+                    ${isEditing ? `<input id="patient-field-email" type="text" value="${escapeHtml(p.email || "")}">` : `<strong>${escapeHtml(p.email || "-")}</strong>`}
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">备注</th>
+                  <td colspan="3">
+                    ${isEditing ? `<textarea id="patient-field-note" rows="2">${safeNote}</textarea>` : `<strong class="patient-detail-note-text">${safeNote || "-"}</strong>`}
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">状态</th>
+                  <td><strong>${escapeHtml(p.status_text || "-")}</strong></td>
+                  <th scope="row">随访周期(天)</th>
+                  <td>
+                    ${isEditing ? `<input id="patient-field-followup-cycle-days" type="number" min="1" max="365" step="1" inputmode="numeric" value="${escapeHtml(p.followup_cycle_days ?? "")}">` : `<strong>${escapeHtml(p.followup_cycle_days ?? "-")}</strong>`}
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">专属随访门户URL</th>
+                  <td colspan="3">
+                    <div class="patient-detail-url-inline">
+                      <span class="patient-detail-url-text">${safePortalUrl}</span>
+                      <div class="patient-detail-url-actions">
+                        <button id="patient-portal-copy-btn" type="button" title="复制链接"><i class="fa-solid fa-copy"></i></button>
+                        <a id="patient-portal-open-btn" href="${safePortalUrl}" target="_blank" rel="noopener noreferrer" title="打开链接"><i class="fa-solid fa-up-right-from-square"></i></a>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </section>
 
         <div class="patient-detail-side">
           <section class="patient-detail-card">
-            <h3>影像记录（${exams.length}）</h3>
+            <div class="patient-detail-card-head">
+              <h3>影像记录（${exams.length}）</h3>
+              <button type="button" class="patient-detail-btn" data-patient-upload-btn>
+                <i class="fa-solid fa-file-circle-plus"></i><span>上传影像</span>
+              </button>
+            </div>
             <ul class="patient-detail-list">
               ${
                 exams.length
@@ -3070,6 +3618,12 @@
     const editBtn = el("patient-detail-edit-btn");
     const cancelBtn = el("patient-detail-cancel-btn");
     const saveBtn = el("patient-detail-save-btn");
+
+    host.querySelectorAll("[data-patient-upload-btn]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        startPatientExamUpload(p.id);
+      });
+    });
 
     editBtn?.addEventListener("click", () => {
       state.patients.detailEditing = true;
@@ -3240,58 +3794,63 @@
   }
 
   function renderOverviewLists(feedRows, scheduleRows, pendingReviews) {
-    const todos = [];
-    const reminders = [];
+    const followupRows = [];
+    const taskRows = [];
+    const schedules = Array.isArray(scheduleRows) ? scheduleRows : [];
+    const feeds = Array.isArray(feedRows) ? feedRows : [];
+    const pendingCount = Number.isFinite(Number(pendingReviews)) ? Number(pendingReviews) : 0;
 
-    if (pendingReviews > 0) {
-      todos.push({
-        title: `待复核影像任务 ${pendingReviews} 项`,
+    schedules.slice(0, 6).forEach((item) => {
+      const status = String(item.status || "todo");
+      const statusText = status === "overdue" ? "逾期" : "待办";
+      followupRows.push({
+        title: `${item.patient_name || "-"} · ${item.title || "未命名日程"}`,
+        meta: `${statusText} · ${formatShortDateTime(item.scheduled_at)}`,
+        tag: status === "overdue" ? "紧急" : "随访",
+      });
+    });
+
+    if (pendingCount > 0) {
+      taskRows.push({
+        title: `待复核影像 ${pendingCount} 项`,
         meta: "请优先处理高风险影像",
         tag: "复核",
       });
     }
 
-    (scheduleRows || []).slice(0, 3).forEach((item) => {
-      todos.push({
-        title: `随访日程：${item.patient_name || "-"} · ${item.title || "未命名日程"}`,
-        meta: `计划时间 ${formatShortDateTime(item.scheduled_at)}`,
-        tag: "日程",
-      });
-    });
-
-    (feedRows || []).slice(0, 4).forEach((item) => {
-      reminders.push({
+    feeds.slice(0, 6).forEach((item) => {
+      taskRows.push({
         title: item.title || "系统事件",
         meta: `${item.message || ""} · ${formatShortDateTime(item.created_at)}`,
         tag: item.level === "warn" ? "提醒" : "动态",
       });
     });
 
-    if (todos.length < 3) {
-      todos.push({
-        title: "问卷回收任务持续进行中",
-        meta: "可在问卷调查模块查看回收进度",
-        tag: "问卷",
-      });
+    const followupDesc = el("overview-followup-card-desc");
+    const followupBadge = el("overview-followup-card-badge");
+    const taskDesc = el("overview-task-card-desc");
+    const taskBadge = el("overview-task-card-badge");
+
+    if (followupDesc) {
+      followupDesc.textContent = followupRows.length ? `待跟进 ${followupRows.length} 条` : "暂无待跟进";
     }
-    if (todos.length < 3) {
-      todos.push({
-        title: "在线聊天协同功能准备中",
-        meta: "后续完成聊天模块后可接入实时待办",
-        tag: "协同",
-      });
+    if (followupBadge) {
+      const overdue = schedules.filter((i) => String(i.status || "") === "overdue").length;
+      followupBadge.textContent = overdue > 0 ? `逾期 ${overdue}` : "正常";
+    }
+    if (taskDesc) {
+      taskDesc.textContent = taskRows.length ? `待处理 ${taskRows.length} 条` : "暂无待处理";
+    }
+    if (taskBadge) {
+      taskBadge.textContent = pendingCount > 0 ? `复核 ${pendingCount}` : "正常";
     }
 
-    if (reminders.length < 2) {
-      reminders.push({
-        title: "消息提醒占位",
-        meta: "后续将接入在线聊天实时提醒",
-        tag: "占位",
-      });
-    }
+    renderOverviewList("overview-followup-list", followupRows, "当前暂无随访提醒");
+    renderOverviewList("overview-task-list", taskRows, "当前暂无任务提醒");
 
-    renderOverviewList("overview-todo-list", todos.slice(0, 6), "当前暂无待办任务");
-    renderOverviewList("overview-reminder-list", reminders.slice(0, 6), "当前暂无提醒");
+    // Backward compatibility with old shell IDs.
+    renderOverviewList("overview-todo-list", followupRows, "当前暂无待办任务");
+    renderOverviewList("overview-reminder-list", taskRows, "当前暂无提醒");
   }
 
   function numOrNull(value) {
@@ -3588,19 +4147,33 @@
   }
 
   async function loadOverviewMetrics() {
+    const cached = readOverviewCache();
+    if (cached && typeof cached === "object") {
+      const cachedStats = cached.stats && typeof cached.stats === "object" ? cached.stats : {};
+      const cachedFeed = Array.isArray(cached.feed) ? cached.feed : [];
+      const cachedSchedules = Array.isArray(cached.schedules) ? cached.schedules : [];
+      setOverviewMetrics(cachedStats);
+      renderOverviewLists(cachedFeed, cachedSchedules, Number(cachedStats.pending_reviews || 0));
+    }
+
     try {
-      const data = await api("/api/overview");
+      const data = await withTimeout(api("/api/overview"), 6000);
       const stats = data && typeof data === "object" ? data.stats || {} : {};
-      const patientTotal = Number(stats.patient_total);
-      const pendingReviews = Number(stats.pending_reviews);
       const feedRows = Array.isArray(data.feed) ? data.feed : [];
       const scheduleRows = Array.isArray(data.schedules) ? data.schedules : [];
 
-      setOverviewMetrics(patientTotal, pendingReviews);
-      renderOverviewLists(feedRows, scheduleRows, Number.isFinite(pendingReviews) ? pendingReviews : 0);
+      setOverviewMetrics(stats);
+      renderOverviewLists(feedRows, scheduleRows, Number(stats.pending_reviews || 0));
+      writeOverviewCache({
+        stats,
+        feed: feedRows,
+        schedules: scheduleRows,
+      });
     } catch (_err) {
-      setOverviewMetrics(NaN, NaN);
-      renderOverviewLists([], [], 0);
+      if (!cached) {
+        setOverviewMetrics({});
+        renderOverviewLists([], [], 0);
+      }
     }
   }
 
@@ -3718,7 +4291,14 @@
     }
 
     if (isReviews) {
+      if (isMobile()) {
+        state.reviews.mobileDetailOpen = false;
+      }
+      syncReviewsMobileView();
       loadReviews(false);
+    } else {
+      state.reviews.mobileDetailOpen = false;
+      syncReviewsMobileView();
     }
 
     if (isQuestionnaires) {
@@ -3729,8 +4309,15 @@
     }
 
     if (isChat) {
+      if (isMobile()) {
+        state.questionnaires.chatMobileDetailOpen = false;
+      }
       syncQuestionnaireChatDirectoryUI();
+      syncQuestionnaireChatMobileView();
       loadQuestionnaireChats(false);
+    } else {
+      state.questionnaires.chatMobileDetailOpen = false;
+      syncQuestionnaireChatMobileView();
     }
 
     if (isLogs) {
@@ -4045,6 +4632,10 @@
       }
       await selectQuestionnaireChat(cid);
     });
+    el("questionnaires-chat-back-btn")?.addEventListener("click", () => {
+      state.questionnaires.chatMobileDetailOpen = false;
+      syncQuestionnaireChatMobileView();
+    });
     el("questionnaires-chat-query-btn")?.addEventListener("click", async () => {
       await setQuestionnaireChatDirectoryMode(!state.questionnaires.directoryMode);
     });
@@ -4102,6 +4693,9 @@
       renderQuestionnaireAssignList();
     });
     el("questionnaire-assign-list")?.addEventListener("click", (event) => {
+      if (event.target.closest("input[data-patient-checkbox][data-patient-id]")) {
+        return;
+      }
       const row = event.target.closest(".questionnaire-assign-item[data-patient-id]");
       if (!row) {
         return;
@@ -4115,6 +4709,24 @@
         selected.delete(pid);
       } else {
         selected.add(pid);
+      }
+      state.questionnaires.assignSelectedIds = [...selected];
+      renderQuestionnaireAssignList();
+    });
+    el("questionnaire-assign-list")?.addEventListener("change", (event) => {
+      const checkbox = event.target.closest("input[data-patient-checkbox][data-patient-id]");
+      if (!checkbox) {
+        return;
+      }
+      const pid = Number(checkbox.getAttribute("data-patient-id") || "0") || 0;
+      if (!pid) {
+        return;
+      }
+      const selected = new Set((state.questionnaires.assignSelectedIds || []).map((x) => Number(x) || 0).filter((x) => x > 0));
+      if (checkbox.checked) {
+        selected.add(pid);
+      } else {
+        selected.delete(pid);
       }
       state.questionnaires.assignSelectedIds = [...selected];
       renderQuestionnaireAssignList();
@@ -4448,6 +5060,10 @@
     el("toggle-sidebar-mobile")?.addEventListener("click", () => {
       sidebar?.classList.remove("mobile-open");
     });
+
+    el("sidebar-backdrop")?.addEventListener("click", () => {
+      sidebar?.classList.remove("mobile-open");
+    });
   }
 
   function queueRealtimeRefresh() {
@@ -4729,6 +5345,11 @@
     const img = el("reviews-image");
     const viewer = state.reviews.viewer;
 
+    el("reviews-mobile-back-btn")?.addEventListener("click", () => {
+      state.reviews.mobileDetailOpen = false;
+      syncReviewsMobileView();
+    });
+
     list?.addEventListener("click", (event) => {
       const actionBtn = event.target.closest("button[data-review-action]");
       if (actionBtn) {
@@ -4739,7 +5360,7 @@
           return;
         }
         if (action === "manual") {
-          showToast("人工手动标注功能占位，后续接入", "info");
+          openReviewReclassifyModal(examId);
           return;
         }
         if (action === "approve") {
@@ -4869,6 +5490,16 @@
       }
     });
 
+    el("review-reclassify-cancel-btn")?.addEventListener("click", closeReviewReclassifyModal);
+    el("review-reclassify-confirm-btn")?.addEventListener("click", async () => {
+      await confirmReviewReclassify();
+    });
+    el("review-reclassify-modal")?.addEventListener("click", (event) => {
+      if (event.target.id === "review-reclassify-modal") {
+        closeReviewReclassifyModal();
+      }
+    });
+
   }
 
   function bindUsers() {
@@ -4924,6 +5555,14 @@
     bindQuestionnaires();
     bindUsers();
     bindNav();
+    window.addEventListener("resize", () => {
+      if (!isMobile()) {
+        state.questionnaires.chatMobileDetailOpen = false;
+        state.reviews.mobileDetailOpen = false;
+      }
+      syncQuestionnaireChatMobileView();
+      syncReviewsMobileView();
+    });
     setActiveView(state.activeView);
     restoreSession();
   }
