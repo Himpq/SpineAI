@@ -80,12 +80,12 @@ class _ServerConfigScreenState extends ConsumerState<ServerConfigScreen> {
               controller: _urlCtrl,
               decoration: const InputDecoration(
                 labelText: '服务器地址',
-                hintText: 'http://192.168.1.112:5000',
+                hintText: 'https://spine.himpqblog.cn/fupt',
                 prefixIcon: Icon(Icons.dns),
               ),
             ),
             const SizedBox(height: 8),
-            Text('当前默认地址: http://192.168.1.112:5000\n真机请确保与服务器处于同一局域网',
+            Text('当前默认地址: https://spine.himpqblog.cn/fupt\n如已保存过服务器地址，则以你保存的地址为准',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline)),
             const SizedBox(height: 24),
             Row(
