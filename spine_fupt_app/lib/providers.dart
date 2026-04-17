@@ -18,7 +18,7 @@ import 'features/models.dart';
 // ── Server Config ──
 const _kServerUrl = 'pref_server_url';
 const _kThemeMode = 'pref_theme_mode';
-const _defaultUrl = 'http://192.168.1.112:5000';
+const _defaultUrl = 'https://spine.himpqblog.cn/fupt';
 
 final serverUrlProvider = StateProvider<String>((ref) => _defaultUrl);
 

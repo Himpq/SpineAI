@@ -18,7 +18,7 @@ class ApiClient {
 
   static Future<ApiClient> getInstance({String? baseUrl}) async {
     if (_instance == null) {
-      _instance = ApiClient._internal(baseUrl ?? 'http://192.168.1.112:5000');
+      _instance = ApiClient._internal(baseUrl ?? 'https://spine.himpqblog.cn/fupt');
       await _instance!._init();
     }
     return _instance!;
